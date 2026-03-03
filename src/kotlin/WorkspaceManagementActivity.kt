@@ -1,21 +1,20 @@
 package com.venside.x1n
 
 import android.app.Activity
-import android.app.AlertDialog
-import android.os.Build
 import android.os.Bundle
-import android.os.Environment
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import android.widget.Button
-import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ListView
 import android.widget.TextView
 import android.widget.Toast
+import com.venside.x1n.utils.DialogHelper
+import com.venside.x1n.utils.FileUtils
+import com.venside.x1n.utils.StorageHelper
 import java.io.File
 
 class WorkspaceManagementActivity : Activity() {
@@ -34,21 +33,9 @@ class WorkspaceManagementActivity : Activity() {
     }
 
     private fun initVensIDEDirectory() {
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                vensIDEBaseDir = File(getExternalFilesDir(null), "VensIDE")
-            } else {
-                vensIDEBaseDir = File(Environment.getExternalStorageDirectory(), "VensIDE")
-            }
-
-            vensIDEBaseDir?.let { dir ->
-                if (!dir.exists()) {
-                    dir.mkdirs()
-                }
-            }
-        } catch (e: Exception) {
-            Toast.makeText(this, "目录初始化失败: ${e.message}", Toast.LENGTH_LONG).show()
-            e.printStackTrace()
+        vensIDEBaseDir = StorageHelper.initVensIDEDirectory(this)
+        if (vensIDEBaseDir == null) {
+            Toast.makeText(this, "目录初始化失败", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -111,30 +98,13 @@ class WorkspaceManagementActivity : Activity() {
     }
 
     private fun showCreateWorkspaceDialog() {
-        val editText = EditText(this).apply {
+        DialogHelper.showInputDialog(
+            context = this,
+            title = "创建工作区",
             hint = "输入工作区名称"
-            setPadding(50, 30, 50, 30)
+        ) { workspaceName ->
+            createWorkspace(workspaceName)
         }
-
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(50, 40, 50, 10)
-            addView(editText)
-        }
-
-        AlertDialog.Builder(this)
-            .setTitle("创建工作区")
-            .setView(layout)
-            .setPositiveButton("创建") { _, _ ->
-                val workspaceName = editText.text.toString().trim()
-                if (workspaceName.isNotEmpty()) {
-                    createWorkspace(workspaceName)
-                } else {
-                    Toast.makeText(this, "请输入工作区名称", Toast.LENGTH_SHORT).show()
-                }
-            }
-            .setNegativeButton("取消", null)
-            .show()
     }
 
     private fun createWorkspace(name: String) {
@@ -143,101 +113,87 @@ class WorkspaceManagementActivity : Activity() {
             return
         }
 
-        val workspaceDir = File(baseDir, name)
-
-        if (workspaceDir.exists()) {
-            Toast.makeText(this, "工作区已存在", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        if (workspaceDir.mkdirs()) {
-            Toast.makeText(this, "工作区创建成功", Toast.LENGTH_SHORT).show()
-            loadWorkspaces()
-        } else {
-            Toast.makeText(this, "工作区创建失败", Toast.LENGTH_SHORT).show()
-        }
+        FileUtils.createFolder(baseDir, name)
+            .onSuccess {
+                Toast.makeText(this, "工作区创建成功", Toast.LENGTH_SHORT).show()
+                loadWorkspaces()
+            }
+            .onFailure { e ->
+                val message = when (e) {
+                    is java.nio.file.FileAlreadyExistsException -> "工作区已存在"
+                    else -> "工作区创建失败: ${e.message}"
+                }
+                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+            }
     }
 
     private fun showWorkspaceOptions(workspace: File) {
         val options = arrayOf("重命名", "删除")
 
-        AlertDialog.Builder(this)
-            .setTitle("工作区选项")
-            .setItems(options) { _, which ->
-                when (which) {
-                    0 -> showRenameDialog(workspace)
-                    1 -> showDeleteDialog(workspace)
-                }
+        DialogHelper.showOptionsDialog(
+            context = this,
+            title = "工作区选项",
+            options = options
+        ) { which ->
+            when (which) {
+                0 -> showRenameDialog(workspace)
+                1 -> showDeleteDialog(workspace)
             }
-            .show()
+        }
     }
 
     private fun showRenameDialog(workspace: File) {
-        val editText = EditText(this).apply {
-            setText(workspace.name)
-            setPadding(50, 30, 50, 30)
+        DialogHelper.showInputDialog(
+            context = this,
+            title = "重命名工作区",
+            hint = workspace.name,
+            defaultValue = workspace.name
+        ) { newName ->
+            renameWorkspace(workspace, newName)
         }
-
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(50, 40, 50, 10)
-            addView(editText)
-        }
-
-        AlertDialog.Builder(this)
-            .setTitle("重命名工作区")
-            .setView(layout)
-            .setPositiveButton("重命名") { _, _ ->
-                val newName = editText.text.toString().trim()
-                if (newName.isNotEmpty() && newName != workspace.name) {
-                    renameWorkspace(workspace, newName)
-                } else {
-                    Toast.makeText(this, "请输入新的工作区名称", Toast.LENGTH_SHORT).show()
-                }
-            }
-            .setNegativeButton("取消", null)
-            .show()
     }
 
     private fun renameWorkspace(workspace: File, newName: String) {
-        val baseDir = vensIDEBaseDir ?: run {
-            Toast.makeText(this, "工作区目录未初始化", Toast.LENGTH_SHORT).show()
+        if (newName == workspace.name) {
+            Toast.makeText(this, "请输入新的工作区名称", Toast.LENGTH_SHORT).show()
             return
         }
 
-        val newWorkspaceDir = File(baseDir, newName)
-
-        if (newWorkspaceDir.exists()) {
-            Toast.makeText(this, "工作区名称已存在", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        if (workspace.renameTo(newWorkspaceDir)) {
-            Toast.makeText(this, "工作区重命名成功", Toast.LENGTH_SHORT).show()
-            loadWorkspaces()
-        } else {
-            Toast.makeText(this, "工作区重命名失败", Toast.LENGTH_SHORT).show()
-        }
+        FileUtils.renameFile(workspace, newName)
+            .onSuccess {
+                Toast.makeText(this, "工作区重命名成功", Toast.LENGTH_SHORT).show()
+                loadWorkspaces()
+            }
+            .onFailure { e ->
+                val message = when (e) {
+                    is java.nio.file.FileAlreadyExistsException -> "工作区名称已存在"
+                    else -> "工作区重命名失败: ${e.message}"
+                }
+                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+            }
     }
 
     private fun showDeleteDialog(workspace: File) {
-        AlertDialog.Builder(this)
-            .setTitle("删除工作区")
-            .setMessage("确定要删除工作区 \"${workspace.name}\" 吗？此操作不可恢复。")
-            .setPositiveButton("删除") { _, _ ->
+        DialogHelper.showConfirmDialog(
+            context = this,
+            title = "删除工作区",
+            message = "确定要删除工作区 \"${workspace.name}\" 吗？此操作不可恢复。",
+            positiveText = "删除",
+            onConfirm = {
                 deleteWorkspace(workspace)
             }
-            .setNegativeButton("取消", null)
-            .show()
+        )
     }
 
     private fun deleteWorkspace(workspace: File) {
-        if (workspace.deleteRecursively()) {
-            Toast.makeText(this, "工作区删除成功", Toast.LENGTH_SHORT).show()
-            loadWorkspaces()
-        } else {
-            Toast.makeText(this, "工作区删除失败", Toast.LENGTH_SHORT).show()
-        }
+        FileUtils.deleteFile(workspace)
+            .onSuccess {
+                Toast.makeText(this, "工作区删除成功", Toast.LENGTH_SHORT).show()
+                loadWorkspaces()
+            }
+            .onFailure { e ->
+                Toast.makeText(this, "工作区删除失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
     }
 
     private fun openWorkspace(workspace: File) {

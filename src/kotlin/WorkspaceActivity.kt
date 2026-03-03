@@ -1,7 +1,6 @@
 package com.venside.x1n
 
 import android.app.Activity
-import android.app.AlertDialog
 import android.content.Intent
 import android.os.Bundle
 import android.text.Editable
@@ -16,17 +15,25 @@ import android.widget.LinearLayout
 import android.widget.ListView
 import android.widget.TextView
 import android.widget.Toast
+import com.venside.x1n.managers.EditorManager
+import com.venside.x1n.managers.FileManager
+import com.venside.x1n.managers.RecentFilesManager
+import com.venside.x1n.models.FileTreeItem
+import com.venside.x1n.utils.DialogHelper
+import com.venside.x1n.utils.FileUtils
+import com.venside.x1n.utils.ThemeConstants
 import java.io.File
 
 class WorkspaceActivity : Activity() {
 
     private var workspacePath: String? = null
-    private var rootDir: File? = null
     private var sidebarVisible = true
-    private var currentFile: File? = null
-    private var currentDir: File? = null  // 当前显示的文件夹
-    private var originalContent: String? = null  // 文件原始内容，用于检测修改
-    private var recentFiles: MutableList<File> = mutableListOf()  // 最近打开的文件列表
+
+    // 管理器实例
+    private val fileManager = FileManager()
+    private val editorManager = EditorManager()
+    private val recentFilesManager = RecentFilesManager()
+
     private lateinit var fileTreeAdapter: FileTreeAdapter
     private var fileTree: MutableList<FileTreeItem> = mutableListOf()
 
@@ -35,8 +42,7 @@ class WorkspaceActivity : Activity() {
         setContentView(R.layout.activity_workspace)
 
         workspacePath = intent.getStringExtra("workspace_path")
-        rootDir = File(workspacePath ?: "/")
-        currentDir = rootDir  // 初始化当前文件夹为根目录
+        fileManager.init(workspacePath ?: "/")
 
         setupUI()
         loadCurrentDir()
@@ -85,8 +91,7 @@ class WorkspaceActivity : Activity() {
                             recentFilesContainer.addView(draggedView, toIndex)
 
                             // 更新最近文件列表
-                            val file = recentFiles.removeAt(fromIndex - 1)  // 减1因为第一个是标题
-                            recentFiles.add(toIndex - 1, file)
+                            recentFilesManager.moveFile(fromIndex - 1, toIndex - 1)  // 减1因为第一个是标题
                         }
                     }
                     true
@@ -160,35 +165,7 @@ class WorkspaceActivity : Activity() {
 
     private fun loadCurrentDir() {
         fileTree.clear()
-
-        // 添加返回上级目录项（如果不是根目录）
-        if (currentDir?.absolutePath != rootDir?.absolutePath) {
-            val parentItem = FileTreeItem(
-                file = currentDir?.parentFile ?: rootDir!!,
-                name = "..",
-                isDirectory = true,
-                size = 0
-            )
-            fileTree.add(parentItem)
-        }
-
-        // 加载当前目录的内容
-        currentDir?.let { dir ->
-            val files = dir.listFiles()?.toList() ?: emptyList()
-            // 排序：文件夹在前，文件在后
-            val sortedFiles = files.sortedWith(compareBy({ !it.isDirectory }, { it.name }))
-
-            for (file in sortedFiles) {
-                val item = FileTreeItem(
-                    file = file,
-                    name = file.name,
-                    isDirectory = file.isDirectory,
-                    size = if (file.isDirectory) 0 else file.length()
-                )
-                fileTree.add(item)
-            }
-        }
-
+        fileTree.addAll(fileManager.loadCurrentDir())
         fileTreeAdapter.notifyDataSetChanged()
         updatePathDisplay()
     }
@@ -196,23 +173,25 @@ class WorkspaceActivity : Activity() {
     private fun onFileTreeItemClick(item: FileTreeItem) {
         if (item.isDirectory) {
             // 点击文件夹，跳转到该文件夹
-            currentDir = item.file
+            fileManager.navigateTo(item)
             loadCurrentDir()
         } else {
             // 打开文件前检查是否有未保存的更改
             if (isContentModified()) {
-                AlertDialog.Builder(this)
-                    .setTitle("未保存的更改")
-                    .setMessage("当前文件有未保存的更改，是否保存？")
-                    .setPositiveButton("保存并打开") { _, _ ->
+                DialogHelper.showConfirmDialog(
+                    context = this,
+                    title = "未保存的更改",
+                    message = "当前文件有未保存的更改，是否保存？",
+                    positiveText = "保存并打开",
+                    negativeText = "不保存打开",
+                    onConfirm = {
                         saveCurrentFile()
                         openFile(item.file)
-                    }
-                    .setNegativeButton("不保存打开") { _, _ ->
+                    },
+                    onCancel = {
                         openFile(item.file)
                     }
-                    .setNeutralButton("取消", null)
-                    .show()
+                )
             } else {
                 // 打开文件
                 openFile(item.file)
@@ -221,30 +200,23 @@ class WorkspaceActivity : Activity() {
     }
 
     private fun navigateToParentDir() {
-        currentDir?.parentFile?.let { parent ->
-            currentDir = parent
+        if (fileManager.navigateToParent()) {
             loadCurrentDir()
         }
     }
 
     private fun updatePathDisplay() {
         // 更新顶栏路径：显示当前编辑文件的路径
+        val currentFile = editorManager.getCurrentFile()
         if (currentFile != null) {
-            val fullPath = currentFile?.absolutePath ?: ""
-            val workspaceName = workspacePath?.let { File(it).name } ?: ""
-            val index = fullPath.indexOf(workspaceName)
-            val shortPath = if (index >= 0) {
-                fullPath.substring(index)
-            } else {
-                fullPath
-            }
-            findViewById<TextView>(R.id.tv_workspace_path)?.text = shortPath
+            findViewById<TextView>(R.id.tv_workspace_path)?.text = fileManager.getShortPath(currentFile)
         } else {
-            findViewById<TextView>(R.id.tv_workspace_path)?.text = rootDir?.name ?: "/workspace"
+            findViewById<TextView>(R.id.tv_workspace_path)?.text = fileManager.getRootDir()?.name ?: "/workspace"
         }
 
         // 更新侧边栏路径：显示资源管理器的当前路径
-        val currentPath = currentDir?.absolutePath ?: rootDir?.absolutePath ?: "/workspace"
+        val currentDir = fileManager.getCurrentDir()
+        val currentPath = currentDir?.absolutePath ?: fileManager.getRootDir()?.absolutePath ?: "/workspace"
         val workspaceName = workspacePath?.let { File(it).name } ?: ""
         val index = currentPath.indexOf(workspaceName)
         val shortPath = if (index >= 0) {
@@ -264,7 +236,7 @@ class WorkspaceActivity : Activity() {
         titleView?.let { container.addView(it) }
 
         // 添加最近文件标签
-        for ((index, file) in recentFiles.withIndex()) {
+        for ((index, file) in recentFilesManager.getRecentFiles().withIndex()) {
             val fileLayout = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = android.view.Gravity.CENTER_VERTICAL
@@ -284,18 +256,20 @@ class WorkspaceActivity : Activity() {
                 setOnClickListener {
                     // 点击标签切换文件
                     if (isContentModified()) {
-                        AlertDialog.Builder(this@WorkspaceActivity)
-                            .setTitle("未保存的更改")
-                            .setMessage("当前文件有未保存的更改，是否保存？")
-                            .setPositiveButton("保存并打开") { _, _ ->
+                        DialogHelper.showConfirmDialog(
+                            context = this@WorkspaceActivity,
+                            title = "未保存的更改",
+                            message = "当前文件有未保存的更改，是否保存？",
+                            positiveText = "保存并打开",
+                            negativeText = "不保存打开",
+                            onConfirm = {
                                 saveCurrentFile()
                                 openFile(file)
-                            }
-                            .setNegativeButton("不保存打开") { _, _ ->
+                            },
+                            onCancel = {
                                 openFile(file)
                             }
-                            .setNeutralButton("取消", null)
-                            .show()
+                        )
                     } else {
                         openFile(file)
                     }
@@ -309,12 +283,12 @@ class WorkspaceActivity : Activity() {
             }
 
             // 高亮当前打开的文件
-            if (currentFile != null && currentFile?.absolutePath == file.absolutePath) {
-                fileTag.setBackgroundColor(0xFF3399FF.toInt())
-                fileTag.setTextColor(0xFFFFFFFF.toInt())
+            if (editorManager.isCurrentFile(file)) {
+                fileTag.setBackgroundColor(ThemeConstants.COLOR_TAG_BG_SELECTED)
+                fileTag.setTextColor(ThemeConstants.COLOR_TEXT_LIGHT)
             } else {
-                fileTag.setBackgroundColor(0xFF3C3C3C.toInt())
-                fileTag.setTextColor(0xFFCCCCCC.toInt())
+                fileTag.setBackgroundColor(ThemeConstants.COLOR_TAG_BG)
+                fileTag.setTextColor(ThemeConstants.COLOR_TEXT_NORMAL)
             }
 
             fileLayout.addView(fileTag)
@@ -339,7 +313,7 @@ class WorkspaceActivity : Activity() {
                 setPadding(6, 0, 6, 0)
                 setOnClickListener {
                     // 从最近文件列表中删除
-                    recentFiles.removeAt(index)
+                    recentFilesManager.removeFileAt(index)
                     updateRecentFilesBar()
                 }
             }
@@ -351,7 +325,7 @@ class WorkspaceActivity : Activity() {
     }
 
     private fun startDrag(view: View, fromIndex: Int) {
-        view.alpha = 0.5f
+        view.alpha = ThemeConstants.DRAG_ALPHA
 
         // 创建拖拽阴影
         val shadowBuilder = android.view.View.DragShadowBuilder(view)
@@ -371,81 +345,64 @@ class WorkspaceActivity : Activity() {
     }
 
     private fun getShortPath(): String {
+        val currentFile = editorManager.getCurrentFile()
         if (currentFile == null) {
-            return rootDir?.name ?: "/workspace"
+            return fileManager.getRootDir()?.name ?: "/workspace"
         }
-        val fullPath = currentFile?.absolutePath ?: return "/workspace"
-        val workspaceName = workspacePath?.let { File(it).name } ?: return "/workspace"
-        val index = fullPath.indexOf(workspaceName)
-        return if (index >= 0) {
-            fullPath.substring(index)
-        } else {
-            fullPath
-        }
+        return fileManager.getShortPath(currentFile)
     }
 
     private fun openFile(file: File) {
-        try {
-            val content = file.readText()
-            currentFile = file
-            originalContent = content  // 保存原始内容
+        editorManager.openFile(file)
+            .onSuccess { content ->
+                // 添加到最近文件列表
+                recentFilesManager.addFile(file)
 
-            // 添加到最近文件列表
-            addToRecentFiles(file)
+                val emptyState = findViewById<TextView>(R.id.empty_state)
+                val editorScroll = findViewById<android.widget.ScrollView>(R.id.editor_scroll)
+                val editorContent = findViewById<EditText>(R.id.editor_content)
 
-            val emptyState = findViewById<TextView>(R.id.empty_state)
-            val editorScroll = findViewById<android.widget.ScrollView>(R.id.editor_scroll)
-            val editorContent = findViewById<EditText>(R.id.editor_content)
+                emptyState?.visibility = View.GONE
+                editorScroll?.visibility = View.VISIBLE
+                editorContent?.setText(content)
 
-            emptyState?.visibility = View.GONE
-            editorScroll?.visibility = View.VISIBLE
-            editorContent?.setText(content)
-
-            // 更新路径显示
-            updatePathDisplay()
-            // 更新行号
-            updateLineNumbers()
-            // 更新最近文件顶栏
-            updateRecentFilesBar()
-        } catch (e: Exception) {
-            Toast.makeText(this, "无法打开文件: ${e.message}", Toast.LENGTH_SHORT).show()
-        }
+                // 更新路径显示
+                updatePathDisplay()
+                // 更新行号
+                updateLineNumbers()
+                // 更新最近文件顶栏
+                updateRecentFilesBar()
+            }
+            .onFailure { e ->
+                Toast.makeText(this, "无法打开文件: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
     }
 
-    private fun addToRecentFiles(file: File) {
-        // 移除已存在的相同文件
-        recentFiles.removeAll { it.absolutePath == file.absolutePath }
-        // 添加到列表开头
-        recentFiles.add(0, file)
-        // 限制最多保留 10 个最近文件
-        if (recentFiles.size > 10) {
-            recentFiles.removeAt(recentFiles.size - 1)
-        }
-    }
+    
 
     private fun saveCurrentFile() {
         val editorContent = findViewById<EditText>(R.id.editor_content) ?: return
         val content = editorContent.text.toString()
-        currentFile?.let { file ->
-            try {
-                file.writeText(content)
-                originalContent = content  // 更新原始内容
 
+        editorManager.saveFile(content)
+            .onSuccess {
                 // 更新文件树中当前文件的大小
-                updateFileSizeInTree(file)
-
+                updateFileSizeInTree()
                 Toast.makeText(this, "文件已保存", Toast.LENGTH_SHORT).show()
-            } catch (e: Exception) {
+            }
+            .onFailure { e ->
                 Toast.makeText(this, "保存失败: ${e.message}", Toast.LENGTH_SHORT).show()
             }
-        }
     }
 
-    private fun updateFileSizeInTree(file: File) {
+    private fun updateFileSizeInTree() {
+        val currentFile = editorManager.getCurrentFile() ?: return
+
         // 查找文件树中对应的文件项并更新大小
         for (item in fileTree) {
-            if (!item.isDirectory && item.file.absolutePath == file.absolutePath) {
-                item.size = file.length()
+            if (!item.isDirectory && item.filePath == currentFile.absolutePath) {
+                val updatedItem = FileTreeItem.fromFile(currentFile)
+                fileTree[fileTree.indexOf(item)] = updatedItem
                 break
             }
         }
@@ -453,11 +410,10 @@ class WorkspaceActivity : Activity() {
     }
 
     private fun isContentModified(): Boolean {
-        // 如果没有打开文件，不算有未保存的更改
-        if (currentFile == null) return false
+        if (!editorManager.isFileOpen()) return false
 
         val currentContent = findViewById<EditText>(R.id.editor_content)?.text.toString()
-        return currentContent != originalContent
+        return editorManager.isModified(currentContent)
     }
 
     override fun onBackPressed() {
@@ -467,64 +423,55 @@ class WorkspaceActivity : Activity() {
     private fun handleBackPress() {
         // 检查是否有未保存的更改
         if (isContentModified()) {
-            AlertDialog.Builder(this)
-                .setTitle("未保存的更改")
-                .setMessage("当前文件有未保存的更改，是否保存？")
-                .setPositiveButton("保存并返回") { _, _ ->
+            DialogHelper.showConfirmDialog(
+                context = this,
+                title = "未保存的更改",
+                message = "当前文件有未保存的更改，是否保存？",
+                positiveText = "保存并返回",
+                negativeText = "不保存返回",
+                onConfirm = {
                     saveCurrentFile()
                     finish()
-                }
-                .setNegativeButton("不保存返回") { _, _ ->
+                },
+                onCancel = {
                     finish()
                 }
-                .setNeutralButton("取消", null)
-                .show()
+            )
         } else {
             // 直接返回主页
-            AlertDialog.Builder(this)
-                .setTitle("返回主页")
-                .setMessage("确定要返回主页吗？")
-                .setPositiveButton("确定") { _, _ ->
+            DialogHelper.showConfirmDialog(
+                context = this,
+                title = "返回主页",
+                message = "确定要返回主页吗？",
+                onConfirm = {
                     finish()
                 }
-                .setNegativeButton("取消", null)
-                .show()
+            )
         }
     }
 
     private fun showNewOptionsDialog() {
-        val editText = EditText(this).apply {
+        DialogHelper.showInputDialog(
+            context = this,
+            title = "新建",
             hint = "输入名称"
-            setPadding(50, 30, 50, 30)
+        ) { name ->
+            showNewTypeDialog(name)
         }
+    }
 
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(50, 40, 50, 10)
-            addView(editText)
+    private fun showNewTypeDialog(name: String) {
+        val options = arrayOf("新建文件", "新建文件夹")
+        DialogHelper.showOptionsDialog(
+            context = this,
+            title = "选择类型",
+            options = options
+        ) { which ->
+            when (which) {
+                0 -> createFile(name)
+                1 -> createFolder(name)
+            }
         }
-
-        AlertDialog.Builder(this)
-            .setTitle("新建")
-            .setView(layout)
-            .setNegativeButton("取消", null)
-            .setPositiveButton("新建文件") { _, _ ->
-                val name = editText.text.toString().trim()
-                if (name.isNotEmpty()) {
-                    createFile(name)
-                } else {
-                    Toast.makeText(this, "请输入名称", Toast.LENGTH_SHORT).show()
-                }
-            }
-            .setNeutralButton("新建文件夹") { _, _ ->
-                val name = editText.text.toString().trim()
-                if (name.isNotEmpty()) {
-                    createFolder(name)
-                } else {
-                    Toast.makeText(this, "请输入名称", Toast.LENGTH_SHORT).show()
-                }
-            }
-            .show()
     }
 
     private fun showFullPathDialog() {
@@ -537,36 +484,33 @@ class WorkspaceActivity : Activity() {
     }
 
     private fun createFile(fileName: String) {
-        currentDir?.let { dir ->
-            val newFile = File(dir, fileName)
-            if (newFile.exists()) {
-                Toast.makeText(this, "文件已存在", Toast.LENGTH_SHORT).show()
-                return
-            }
-            try {
-                newFile.createNewFile()
+        fileManager.createFile(fileName)
+            .onSuccess {
                 Toast.makeText(this, "文件创建成功", Toast.LENGTH_SHORT).show()
                 loadCurrentDir()
-            } catch (e: Exception) {
-                Toast.makeText(this, "文件创建失败: ${e.message}", Toast.LENGTH_SHORT).show()
             }
-        }
+            .onFailure { e ->
+                val message = when (e) {
+                    is java.nio.file.FileAlreadyExistsException -> "文件已存在"
+                    else -> "文件创建失败: ${e.message}"
+                }
+                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+            }
     }
 
     private fun createFolder(folderName: String) {
-        currentDir?.let { dir ->
-            val newFolder = File(dir, folderName)
-            if (newFolder.exists()) {
-                Toast.makeText(this, "文件夹已存在", Toast.LENGTH_SHORT).show()
-                return
-            }
-            if (newFolder.mkdirs()) {
+        fileManager.createFolder(folderName)
+            .onSuccess {
                 Toast.makeText(this, "文件夹创建成功", Toast.LENGTH_SHORT).show()
                 loadCurrentDir()
-            } else {
-                Toast.makeText(this, "文件夹创建失败", Toast.LENGTH_SHORT).show()
             }
-        }
+            .onFailure { e ->
+                val message = when (e) {
+                    is java.nio.file.FileAlreadyExistsException -> "文件夹已存在"
+                    else -> "文件夹创建失败: ${e.message}"
+                }
+                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+            }
     }
 
     private fun showFileOptions(item: FileTreeItem) {
@@ -576,98 +520,90 @@ class WorkspaceActivity : Activity() {
             arrayOf("打开", "重命名", "删除")
         }
 
-        AlertDialog.Builder(this)
-            .setTitle("文件选项")
-            .setItems(options) { _, which ->
-                when (which) {
-                    0 -> if (!item.isDirectory) openFile(item.file) else showRenameDialog(item)
-                    1 -> if (!item.isDirectory) showRenameDialog(item) else showDeleteDialog(item)
-                    2 -> showDeleteDialog(item)
-                }
+        DialogHelper.showOptionsDialog(
+            context = this,
+            title = "文件选项",
+            options = options
+        ) { which ->
+            when (which) {
+                0 -> if (!item.isDirectory) openFile(item.file) else showRenameDialog(item)
+                1 -> if (!item.isDirectory) showRenameDialog(item) else showDeleteDialog(item)
+                2 -> showDeleteDialog(item)
             }
-            .show()
+        }
     }
 
     private fun showRenameDialog(item: FileTreeItem) {
-        val editText = EditText(this).apply {
-            setText(item.name)
-            setPadding(50, 30, 50, 30)
-        }
-
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(50, 40, 50, 10)
-            addView(editText)
-        }
-
-        AlertDialog.Builder(this)
-            .setTitle("重命名")
-            .setView(layout)
-            .setPositiveButton("重命名") { _, _ ->
-                val newName = editText.text.toString().trim()
-                if (newName.isNotEmpty() && newName != item.name) {
-                    renameFile(item.file, newName)
-                } else {
-                    Toast.makeText(this, "请输入新的名称", Toast.LENGTH_SHORT).show()
-                }
+        DialogHelper.showInputDialog(
+            context = this,
+            title = "重命名",
+            hint = item.name,
+            defaultValue = item.name
+        ) { newName ->
+            if (newName != item.name) {
+                renameFile(item.file, newName)
+            } else {
+                Toast.makeText(this, "请输入新的名称", Toast.LENGTH_SHORT).show()
             }
-            .setNegativeButton("取消", null)
-            .show()
+        }
     }
 
     private fun renameFile(file: File, newName: String) {
-        val newFile = File(file.parentFile, newName)
-        if (newFile.exists()) {
-            Toast.makeText(this, "文件已存在", Toast.LENGTH_SHORT).show()
-            return
-        }
-        if (file.renameTo(newFile)) {
-            Toast.makeText(this, "重命名成功", Toast.LENGTH_SHORT).show()
-            loadCurrentDir()
-        } else {
-            Toast.makeText(this, "重命名失败", Toast.LENGTH_SHORT).show()
-        }
+        fileManager.renameFile(file, newName)
+            .onSuccess {
+                Toast.makeText(this, "重命名成功", Toast.LENGTH_SHORT).show()
+                loadCurrentDir()
+            }
+            .onFailure { e ->
+                val message = when (e) {
+                    is java.nio.file.FileAlreadyExistsException -> "文件已存在"
+                    else -> "重命名失败: ${e.message}"
+                }
+                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+            }
     }
 
     private fun showDeleteDialog(item: FileTreeItem) {
-        AlertDialog.Builder(this)
-            .setTitle("删除")
-            .setMessage("确定要删除 \"${item.name}\" 吗？此操作不可恢复。")
-            .setPositiveButton("删除") { _, _ ->
+        DialogHelper.showConfirmDialog(
+            context = this,
+            title = "删除",
+            message = "确定要删除 \"${item.name}\" 吗？此操作不可恢复。",
+            positiveText = "删除",
+            onConfirm = {
                 deleteFile(item.file)
             }
-            .setNegativeButton("取消", null)
-            .show()
+        )
     }
 
     private fun deleteFile(file: File) {
-        if (file.deleteRecursively()) {
-            Toast.makeText(this, "删除成功", Toast.LENGTH_SHORT).show()
+        FileUtils.deleteFile(file)
+            .onSuccess {
+                Toast.makeText(this, "删除成功", Toast.LENGTH_SHORT).show()
 
-            // 从最近文件列表中删除该文件
-            recentFiles.removeAll { it.absolutePath == file.absolutePath }
-            updateRecentFilesBar()
+                // 从最近文件列表中删除该文件
+                recentFilesManager.removeFile(file)
+                updateRecentFilesBar()
 
-            // 检查是否删除了当前正在编辑的文件
-            if (currentFile != null && currentFile?.absolutePath == file.absolutePath) {
-                // 清空编辑器
-                currentFile = null
-                originalContent = null
-                val emptyState = findViewById<TextView>(R.id.empty_state)
-                val editorScroll = findViewById<android.widget.ScrollView>(R.id.editor_scroll)
-                val editorContent = findViewById<EditText>(R.id.editor_content)
-                val lineNumbers = findViewById<TextView>(R.id.line_numbers)
+                // 检查是否删除了当前正在编辑的文件
+                if (editorManager.isCurrentFile(file)) {
+                    // 清空编辑器
+                    editorManager.closeFile()
+                    val emptyState = findViewById<TextView>(R.id.empty_state)
+                    val editorScroll = findViewById<android.widget.ScrollView>(R.id.editor_scroll)
+                    val editorContent = findViewById<EditText>(R.id.editor_content)
+                    val lineNumbers = findViewById<TextView>(R.id.line_numbers)
 
-                emptyState?.visibility = View.VISIBLE
-                editorScroll?.visibility = View.GONE
-                editorContent?.text?.clear()
-                lineNumbers?.text = ""
+                    emptyState?.visibility = View.VISIBLE
+                    editorScroll?.visibility = View.GONE
+                    editorContent?.text?.clear()
+                    lineNumbers?.text = ""
+                }
+
+                loadCurrentDir()
             }
-
-            loadCurrentDir()
-        } else {
-            Toast.makeText(this, "删除失败", Toast.LENGTH_SHORT).show()
-        }
+            .onFailure { e ->
+                Toast.makeText(this, "删除失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
     }
 
     private fun updateLineNumbers() {
@@ -689,13 +625,7 @@ class WorkspaceActivity : Activity() {
         lineNumbers.text = lineNumbersText.toString()
     }
 
-    // 文件树项数据类
-    data class FileTreeItem(
-        val file: File,
-        val name: String,
-        val isDirectory: Boolean,
-        var size: Long
-    )
+    
 
     // 文件树适配器
     private class FileTreeAdapter(
@@ -728,23 +658,17 @@ class WorkspaceActivity : Activity() {
                 fileIcon?.visibility = View.VISIBLE
                 fileIcon?.setImageResource(android.R.drawable.ic_menu_info_details)
                 fileSize?.visibility = View.VISIBLE
-                fileSize?.text = formatFileSize(item.size)
+                fileSize?.text = FileUtils.formatFileSize(item.size)
             }
 
             // 设置文件名
             fileName?.text = item.name
-            fileName?.setTextColor(0xFFCCCCCC.toInt())
+            fileName?.setTextColor(ThemeConstants.COLOR_TEXT_NORMAL)
 
             // 清除缩进
             view.setPadding(8, view.paddingTop, view.paddingRight, view.paddingBottom)
 
             return view
-        }
-
-        private fun formatFileSize(size: Long): String {
-            if (size < 1024) return "$size B"
-            if (size < 1024 * 1024) return "${size / 1024} KB"
-            return "${size / (1024 * 1024)} MB"
         }
     }
 }

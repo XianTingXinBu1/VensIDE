@@ -1,14 +1,14 @@
 package com.venside.x1n
 
 import android.app.Activity
-import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.os.Environment
 import android.widget.Button
 import android.widget.Toast
+import com.venside.x1n.utils.DialogHelper
+import com.venside.x1n.utils.StorageHelper
 import java.io.File
 
 class MainActivity : Activity() {
@@ -80,27 +80,11 @@ class MainActivity : Activity() {
     }
 
     private fun initVensIDEDirectory() {
-        try {
-            // Android 10+ 使用应用专属目录，避免权限问题
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                vensIDEBaseDir = File(getExternalFilesDir(null), "VensIDE")
-            } else {
-                // Android 10 以下使用外部存储
-                vensIDEBaseDir = File(Environment.getExternalStorageDirectory(), "VensIDE")
-            }
-
-            vensIDEBaseDir?.let { dir ->
-                if (!dir.exists()) {
-                    if (dir.mkdirs()) {
-                        Toast.makeText(this, "工作区目录初始化成功", Toast.LENGTH_SHORT).show()
-                    } else {
-                        Toast.makeText(this, "工作区目录创建失败", Toast.LENGTH_SHORT).show()
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Toast.makeText(this, "目录初始化失败: ${e.message}", Toast.LENGTH_LONG).show()
-            e.printStackTrace()
+        vensIDEBaseDir = StorageHelper.initVensIDEDirectory(this)
+        if (vensIDEBaseDir != null) {
+            Toast.makeText(this, "工作区目录初始化成功", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, "工作区目录创建失败", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -151,17 +135,13 @@ class MainActivity : Activity() {
     private fun showWorkspaceDialog(workspaces: List<File>) {
         val workspaceNames = workspaces.map { it.name }.toTypedArray()
 
-        AlertDialog.Builder(this)
-            .setTitle("选择工作区")
-            .setItems(workspaceNames) { _, which ->
-                openWorkspaceWithLoading(workspaces[which])
-            }
-            .setPositiveButton("管理工作区") { _, _ ->
-                val intent = Intent(this, WorkspaceManagementActivity::class.java)
-                startActivity(intent)
-            }
-            .setNegativeButton("取消", null)
-            .show()
+        DialogHelper.showOptionsDialog(
+            context = this,
+            title = "选择工作区",
+            options = workspaceNames
+        ) { which ->
+            openWorkspaceWithLoading(workspaces[which])
+        }
     }
 
     private fun openWorkspaceWithLoading(workspace: File) {
