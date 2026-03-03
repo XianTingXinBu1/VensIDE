@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:background="#1E1E1E">
+
+    <!-- Loading 动画图标 -->
+    <TextView
+        android:layout_width="64dp"
+        android:layout_height="64dp"
+        android:text="V"
+        android:textSize="48sp"
+        android:textColor="#2196F3"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:layout_marginBottom="32dp" />
+
+    <!-- 加载文本 -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="正在加载工作区..."
+        android:textSize="18sp"
+        android:textColor="#FFFFFF"
+        android:layout_marginBottom="8dp" />
+
+    <!-- 进度条 -->
+    <ProgressBar
+        android:layout_width="200dp"
+        android:layout_height="4dp"
+        android:indeterminate="true"
+        android:progressTint="#2196F3"
+        android:layout_marginTop="16dp"
+        style="?android:attr/progressBarStyleHorizontal" />
+
+</LinearLayout>

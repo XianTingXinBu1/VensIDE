@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:padding="8dp"
+    android:background="@android:color/transparent">
+
+    <!-- 展开/折叠指示器 -->
+    <ImageView
+        android:id="@+id/iv_expand_indicator"
+        android:layout_width="16dp"
+        android:layout_height="16dp"
+        android:src="@android:drawable/arrow_down_float"
+        android:tint="#666666"
+        android:visibility="gone"
+        android:padding="2dp" />
+
+    <!-- 文件/文件夹图标 -->
+    <ImageView
+        android:id="@+id/iv_file_icon"
+        android:layout_width="24dp"
+        android:layout_height="24dp"
+        android:src="@android:drawable/ic_menu_info_details"
+        android:tint="#CCCCCC"
+        android:layout_marginLeft="4dp"
+        android:layout_marginRight="8dp" />
+
+    <!-- 文件名 -->
+    <TextView
+        android:id="@+id/tv_file_name"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:text="filename"
+        android:textSize="14sp"
+        android:textColor="#CCCCCC"
+        android:singleLine="true"
+        android:ellipsize="end" />
+
+    <!-- 文件大小 -->
+    <TextView
+        android:id="@+id/tv_file_size"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="0 B"
+        android:textSize="12sp"
+        android:textColor="#666666"
+        android:layout_marginLeft="8dp" />
+
+</LinearLayout>

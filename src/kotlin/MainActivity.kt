@@ -2,13 +2,12 @@ package com.venside.x1n
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.widget.Button
-import android.widget.EditText
-import android.widget.LinearLayout
 import android.widget.Toast
 import java.io.File
 
@@ -107,9 +106,13 @@ class MainActivity : Activity() {
 
     private fun setupButtonListeners() {
         try {
-            // 开始按钮 - 创建工作区
+            // 开始按钮 - 选择工作区或进入默认工作区
             findViewById<Button>(R.id.btn_start)?.setOnClickListener {
-                showCreateWorkspaceDialog()
+                if (!hasStoragePermission) {
+                    Toast.makeText(this, "请先授予存储权限", Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+                showWorkspaceSelectionDialog()
             }
 
             // 设置按钮（暂未实现）
@@ -127,66 +130,43 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun showCreateWorkspaceDialog() {
-        try {
-            if (!hasStoragePermission) {
-                Toast.makeText(this, "请先授予存储权限", Toast.LENGTH_SHORT).show()
-                requestStoragePermission()
-                return
-            }
+    private fun showWorkspaceSelectionDialog() {
+        vensIDEBaseDir?.let { baseDir ->
+            val workspaces = baseDir.listFiles()?.filter { it.isDirectory } ?: emptyList()
 
-            val editText = EditText(this).apply {
-                hint = "输入工作区名称"
-                setPadding(50, 30, 50, 30)
-            }
-
-            val layout = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(50, 40, 50, 10)
-                addView(editText)
-            }
-
-            AlertDialog.Builder(this)
-                .setTitle("创建工作区")
-                .setView(layout)
-                .setPositiveButton("创建") { _, _ ->
-                    val workspaceName = editText.text.toString().trim()
-                    if (workspaceName.isNotEmpty()) {
-                        createWorkspace(workspaceName)
-                    } else {
-                        Toast.makeText(this, "请输入工作区名称", Toast.LENGTH_SHORT).show()
-                    }
+            if (workspaces.isEmpty()) {
+                // 没有工作区，使用默认工作区
+                val defaultWorkspace = File(baseDir, "Default")
+                if (!defaultWorkspace.exists()) {
+                    defaultWorkspace.mkdirs()
                 }
-                .setNegativeButton("取消", null)
-                .show()
-        } catch (e: Exception) {
-            Toast.makeText(this, "对话框显示失败: ${e.message}", Toast.LENGTH_LONG).show()
-            e.printStackTrace()
+                openWorkspaceWithLoading(defaultWorkspace)
+            } else {
+                // 有工作区，显示选择对话框
+                showWorkspaceDialog(workspaces)
+            }
         }
     }
 
-    private fun createWorkspace(name: String) {
-        try {
-            val baseDir = vensIDEBaseDir ?: run {
-                Toast.makeText(this, "工作区目录未初始化", Toast.LENGTH_SHORT).show()
-                return
-            }
+    private fun showWorkspaceDialog(workspaces: List<File>) {
+        val workspaceNames = workspaces.map { it.name }.toTypedArray()
 
-            val workspaceDir = File(baseDir, name)
-
-            if (workspaceDir.exists()) {
-                Toast.makeText(this, "工作区已存在", Toast.LENGTH_SHORT).show()
-                return
+        AlertDialog.Builder(this)
+            .setTitle("选择工作区")
+            .setItems(workspaceNames) { _, which ->
+                openWorkspaceWithLoading(workspaces[which])
             }
-
-            if (workspaceDir.mkdirs()) {
-                Toast.makeText(this, "工作区创建成功：$name", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(this, "工作区创建失败", Toast.LENGTH_SHORT).show()
+            .setPositiveButton("管理工作区") { _, _ ->
+                val intent = Intent(this, WorkspaceManagementActivity::class.java)
+                startActivity(intent)
             }
-        } catch (e: Exception) {
-            Toast.makeText(this, "工作区创建失败: ${e.message}", Toast.LENGTH_LONG).show()
-            e.printStackTrace()
-        }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun openWorkspaceWithLoading(workspace: File) {
+        val intent = Intent(this, LoadingActivity::class.java)
+        intent.putExtra("workspace_path", workspace.absolutePath)
+        startActivity(intent)
     }
 }
