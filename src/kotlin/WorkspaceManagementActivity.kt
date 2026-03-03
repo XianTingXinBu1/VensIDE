@@ -197,8 +197,9 @@ class WorkspaceManagementActivity : Activity() {
     }
 
     private fun openWorkspace(workspace: File) {
-        Toast.makeText(this, "打开工作区: ${workspace.name}", Toast.LENGTH_SHORT).show()
-        // TODO: 实现打开工作区的功能
+        val intent = Intent(this, LoadingActivity::class.java)
+        intent.putExtra("workspace_path", workspace.absolutePath)
+        startActivity(intent)
     }
 
     // 工作区适配器
