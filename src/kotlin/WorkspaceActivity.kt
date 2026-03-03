@@ -63,6 +63,47 @@ class WorkspaceActivity : Activity() {
             showFullPathDialog()
         }
 
+        // 设置最近文件栏的拖拽事件监听器
+        val recentFilesContainer = findViewById<LinearLayout>(R.id.recent_files_container)
+        recentFilesContainer?.setOnDragListener { view, event ->
+            val draggedView = event.localState as? View ?: return@setOnDragListener false
+
+            when (event.action) {
+                android.view.DragEvent.ACTION_DRAG_STARTED -> true
+                android.view.DragEvent.ACTION_DRAG_ENTERED -> true
+                android.view.DragEvent.ACTION_DRAG_LOCATION -> {
+                    // 获取当前拖拽位置下的子视图
+                    val targetView = findChildAt(recentFilesContainer, event.x, event.y)
+                    if (targetView != null && targetView != draggedView) {
+                        // 找到源位置和目标位置
+                        val fromIndex = recentFilesContainer.indexOfChild(draggedView)
+                        val toIndex = recentFilesContainer.indexOfChild(targetView)
+
+                        // 交换位置
+                        if (fromIndex >= 0 && toIndex >= 0 && fromIndex != toIndex) {
+                            recentFilesContainer.removeView(draggedView)
+                            recentFilesContainer.addView(draggedView, toIndex)
+
+                            // 更新最近文件列表
+                            val file = recentFiles.removeAt(fromIndex - 1)  // 减1因为第一个是标题
+                            recentFiles.add(toIndex - 1, file)
+                        }
+                    }
+                    true
+                }
+                android.view.DragEvent.ACTION_DRAG_EXITED -> true
+                android.view.DragEvent.ACTION_DROP -> {
+                    draggedView.alpha = 1.0f
+                    true
+                }
+                android.view.DragEvent.ACTION_DRAG_ENDED -> {
+                    draggedView.alpha = 1.0f
+                    true
+                }
+                else -> false
+            }
+        }
+
         // 新建按钮（文件/文件夹）
         findViewById<ImageView>(R.id.btn_new)?.setOnClickListener {
             showNewOptionsDialog()
@@ -88,8 +129,15 @@ class WorkspaceActivity : Activity() {
         // 文件树长按事件
         fileTreeView.setOnItemLongClickListener { _, _, position, _ ->
             val item = fileTree[position]
-            showFileOptions(item)
-            true
+            // 如果长按的是"..."项，直接返回工作区根目录
+            if (item.name == "..") {
+                currentDir = rootDir
+                loadCurrentDir()
+                true
+            } else {
+                showFileOptions(item)
+                true
+            }
         }
 
         // 编辑器内容监听
@@ -180,15 +228,31 @@ class WorkspaceActivity : Activity() {
     }
 
     private fun updatePathDisplay() {
+        // 更新顶栏路径：显示当前编辑文件的路径
+        if (currentFile != null) {
+            val fullPath = currentFile?.absolutePath ?: ""
+            val workspaceName = workspacePath?.let { File(it).name } ?: ""
+            val index = fullPath.indexOf(workspaceName)
+            val shortPath = if (index >= 0) {
+                fullPath.substring(index)
+            } else {
+                fullPath
+            }
+            findViewById<TextView>(R.id.tv_workspace_path)?.text = shortPath
+        } else {
+            findViewById<TextView>(R.id.tv_workspace_path)?.text = rootDir?.name ?: "/workspace"
+        }
+
+        // 更新侧边栏路径：显示资源管理器的当前路径
         val currentPath = currentDir?.absolutePath ?: rootDir?.absolutePath ?: "/workspace"
-        val workspaceName = workspacePath?.let { File(it).name } ?: return
+        val workspaceName = workspacePath?.let { File(it).name } ?: ""
         val index = currentPath.indexOf(workspaceName)
         val shortPath = if (index >= 0) {
             currentPath.substring(index)
         } else {
             currentPath
         }
-        findViewById<TextView>(R.id.tv_workspace_path)?.text = shortPath
+        findViewById<TextView>(R.id.tv_sidebar_path)?.text = shortPath
     }
 
     private fun updateRecentFilesBar() {
@@ -200,11 +264,23 @@ class WorkspaceActivity : Activity() {
         titleView?.let { container.addView(it) }
 
         // 添加最近文件标签
-        for (file in recentFiles) {
+        for ((index, file) in recentFiles.withIndex()) {
+            val fileLayout = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(4, 4, 4, 4)
+                val layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.MATCH_PARENT
+                )
+                layoutParams.setMargins(0, 0, 4, 0)
+                this.layoutParams = layoutParams
+            }
+
             val fileTag = TextView(this).apply {
                 text = file.name
-                textSize = 12f
-                setPadding(12, 6, 12, 6)
+                textSize = 13f
+                setPadding(16, 10, 4, 10)
                 setOnClickListener {
                     // 点击标签切换文件
                     if (isContentModified()) {
@@ -224,6 +300,12 @@ class WorkspaceActivity : Activity() {
                         openFile(file)
                     }
                 }
+
+                // 添加拖拽功能
+                setOnLongClickListener {
+                    startDrag(fileLayout, index)
+                    true
+                }
             }
 
             // 高亮当前打开的文件
@@ -235,8 +317,57 @@ class WorkspaceActivity : Activity() {
                 fileTag.setTextColor(0xFFCCCCCC.toInt())
             }
 
-            container.addView(fileTag)
+            fileLayout.addView(fileTag)
+
+            // 添加删除按钮容器
+            val deleteBtnContainer = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER
+                val layoutParams = LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT
+                )
+                layoutParams.setMargins(4, 0, 0, 0)
+                this.layoutParams = layoutParams
+            }
+
+            // 添加删除按钮
+            val deleteBtn = TextView(this).apply {
+                text = "×"
+                textSize = 14f
+                gravity = android.view.Gravity.CENTER
+                setPadding(6, 0, 6, 0)
+                setOnClickListener {
+                    // 从最近文件列表中删除
+                    recentFiles.removeAt(index)
+                    updateRecentFilesBar()
+                }
+            }
+
+            deleteBtnContainer.addView(deleteBtn)
+            fileLayout.addView(deleteBtnContainer)
+            container.addView(fileLayout)
         }
+    }
+
+    private fun startDrag(view: View, fromIndex: Int) {
+        view.alpha = 0.5f
+
+        // 创建拖拽阴影
+        val shadowBuilder = android.view.View.DragShadowBuilder(view)
+
+        // 开始拖拽
+        view.startDrag(null, shadowBuilder, view, 0)
+    }
+
+    private fun findChildAt(container: LinearLayout, x: Float, y: Float): View? {
+        for (i in 1 until container.childCount) {  // 从1开始，跳过标题
+            val child = container.getChildAt(i)
+            if (x >= child.left && x <= child.right && y >= child.top && y <= child.bottom) {
+                return child
+            }
+        }
+        return null
     }
 
     private fun getShortPath(): String {
@@ -512,6 +643,10 @@ class WorkspaceActivity : Activity() {
     private fun deleteFile(file: File) {
         if (file.deleteRecursively()) {
             Toast.makeText(this, "删除成功", Toast.LENGTH_SHORT).show()
+
+            // 从最近文件列表中删除该文件
+            recentFiles.removeAll { it.absolutePath == file.absolutePath }
+            updateRecentFilesBar()
 
             // 检查是否删除了当前正在编辑的文件
             if (currentFile != null && currentFile?.absolutePath == file.absolutePath) {

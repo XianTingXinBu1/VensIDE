@@ -139,6 +139,21 @@
                     android:contentDescription="新建" />
             </LinearLayout>
 
+            <!-- 资源管理器路径显示栏 -->
+            <TextView
+                android:id="@+id/tv_sidebar_path"
+                android:layout_width="match_parent"
+                android:layout_height="32dp"
+                android:text="/workspace"
+                android:textSize="11sp"
+                android:textColor="#999999"
+                android:singleLine="true"
+                android:ellipsize="middle"
+                android:paddingLeft="12dp"
+                android:paddingRight="12dp"
+                android:gravity="center_vertical"
+                android:background="#252526" />
+
             <!-- 文件树列表 -->
             <ListView
                 android:id="@+id/file_tree"
