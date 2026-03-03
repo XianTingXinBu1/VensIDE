@@ -43,6 +43,17 @@
             android:padding="4dp"
             android:background="#1E1E1E" />
 
+        <!-- 保存按钮 -->
+        <ImageView
+            android:id="@+id/btn_save"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@android:drawable/ic_menu_save"
+            android:tint="#CCCCCC"
+            android:padding="8dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="保存" />
+
         <!-- 返回按钮 -->
         <ImageView
             android:id="@+id/btn_back"
@@ -54,6 +65,32 @@
             android:background="?android:attr/selectableItemBackgroundBorderless"
             android:contentDescription="返回" />
     </LinearLayout>
+
+    <!-- 最近文件顶栏 -->
+    <HorizontalScrollView
+        android:layout_width="match_parent"
+        android:layout_height="36dp"
+        android:background="#2D2D2D"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:id="@+id/recent_files_container"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingLeft="8dp"
+            android:paddingRight="8dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="最近打开: "
+                android:textSize="12sp"
+                android:textColor="#999999"
+                android:layout_marginRight="8dp" />
+        </LinearLayout>
+    </HorizontalScrollView>
 
     <!-- 主内容区域 -->
     <LinearLayout

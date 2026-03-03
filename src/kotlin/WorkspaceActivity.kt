@@ -24,7 +24,9 @@ class WorkspaceActivity : Activity() {
     private var rootDir: File? = null
     private var sidebarVisible = true
     private var currentFile: File? = null
-    private var currentDir: File? = null  // 当前选中的文件夹
+    private var currentDir: File? = null  // 当前显示的文件夹
+    private var originalContent: String? = null  // 文件原始内容，用于检测修改
+    private var recentFiles: MutableList<File> = mutableListOf()  // 最近打开的文件列表
     private lateinit var fileTreeAdapter: FileTreeAdapter
     private var fileTree: MutableList<FileTreeItem> = mutableListOf()
 
@@ -37,7 +39,7 @@ class WorkspaceActivity : Activity() {
         currentDir = rootDir  // 初始化当前文件夹为根目录
 
         setupUI()
-        loadFileTree()
+        loadCurrentDir()
     }
 
     private fun setupUI() {
@@ -51,6 +53,11 @@ class WorkspaceActivity : Activity() {
             handleBackPress()
         }
 
+        // 保存按钮
+        findViewById<ImageView>(R.id.btn_save)?.setOnClickListener {
+            saveCurrentFile()
+        }
+
         // 路径显示点击事件
         findViewById<TextView>(R.id.tv_workspace_path)?.setOnClickListener {
             showFullPathDialog()
@@ -59,6 +66,12 @@ class WorkspaceActivity : Activity() {
         // 新建按钮（文件/文件夹）
         findViewById<ImageView>(R.id.btn_new)?.setOnClickListener {
             showNewOptionsDialog()
+        }
+
+        // 返回上级文件夹按钮（复用侧边栏切换按钮）
+        findViewById<ImageView>(R.id.btn_toggle_sidebar)?.setOnLongClickListener {
+            navigateToParentDir()
+            true
         }
 
         // 文件树列表
@@ -97,107 +110,133 @@ class WorkspaceActivity : Activity() {
         sidebar?.visibility = if (sidebarVisible) View.VISIBLE else View.GONE
     }
 
-    private fun loadFileTree() {
+    private fun loadCurrentDir() {
         fileTree.clear()
-        rootDir?.let { root ->
-            buildFileTree(root, 0)
-        }
-        fileTreeAdapter.notifyDataSetChanged()
 
-        // 更新路径显示（只显示当前打开文件的路径）
-        updatePathDisplay()
-    }
-
-    private fun buildFileTree(dir: File, level: Int) {
-        val files = dir.listFiles()?.toList() ?: emptyList()
-
-        // 排序：文件夹在前，文件在后
-        val sortedFiles = files.sortedWith(compareBy({ !it.isDirectory }, { it.name }))
-
-        for (file in sortedFiles) {
-            val item = FileTreeItem(
-                file = file,
-                name = file.name,
-                isDirectory = file.isDirectory,
-                size = if (file.isDirectory) 0 else file.length(),
-                level = level,
-                isExpanded = false
+        // 添加返回上级目录项（如果不是根目录）
+        if (currentDir?.absolutePath != rootDir?.absolutePath) {
+            val parentItem = FileTreeItem(
+                file = currentDir?.parentFile ?: rootDir!!,
+                name = "..",
+                isDirectory = true,
+                size = 0
             )
-            fileTree.add(item)
+            fileTree.add(parentItem)
+        }
 
-            // 如果是文件夹，递归添加子项
-            if (file.isDirectory) {
-                buildFileTree(file, level + 1)
+        // 加载当前目录的内容
+        currentDir?.let { dir ->
+            val files = dir.listFiles()?.toList() ?: emptyList()
+            // 排序：文件夹在前，文件在后
+            val sortedFiles = files.sortedWith(compareBy({ !it.isDirectory }, { it.name }))
+
+            for (file in sortedFiles) {
+                val item = FileTreeItem(
+                    file = file,
+                    name = file.name,
+                    isDirectory = file.isDirectory,
+                    size = if (file.isDirectory) 0 else file.length()
+                )
+                fileTree.add(item)
             }
         }
+
+        fileTreeAdapter.notifyDataSetChanged()
+        updatePathDisplay()
     }
 
     private fun onFileTreeItemClick(item: FileTreeItem) {
         if (item.isDirectory) {
-            // 更新当前文件夹
+            // 点击文件夹，跳转到该文件夹
             currentDir = item.file
-            // 切换展开/折叠状态
-            toggleExpand(item)
+            loadCurrentDir()
         } else {
-            // 打开文件
-            openFile(item.file)
-        }
-    }
-
-    private fun toggleExpand(item: FileTreeItem) {
-        item.isExpanded = !item.isExpanded
-
-        if (item.isExpanded) {
-            // 展开文件夹，显示子项
-            val position = fileTree.indexOf(item)
-            if (position >= 0) {
-                val children = getChildren(item.file, item.level + 1)
-                fileTree.addAll(position + 1, children)
-            }
-        } else {
-            // 折叠文件夹，隐藏所有子项
-            val position = fileTree.indexOf(item)
-            if (position >= 0) {
-                val itemsToRemove = mutableListOf<FileTreeItem>()
-                for (i in (position + 1) until fileTree.size) {
-                    if (fileTree[i].level > item.level) {
-                        itemsToRemove.add(fileTree[i])
-                    } else {
-                        break
+            // 打开文件前检查是否有未保存的更改
+            if (isContentModified()) {
+                AlertDialog.Builder(this)
+                    .setTitle("未保存的更改")
+                    .setMessage("当前文件有未保存的更改，是否保存？")
+                    .setPositiveButton("保存并打开") { _, _ ->
+                        saveCurrentFile()
+                        openFile(item.file)
                     }
-                }
-                fileTree.removeAll(itemsToRemove)
+                    .setNegativeButton("不保存打开") { _, _ ->
+                        openFile(item.file)
+                    }
+                    .setNeutralButton("取消", null)
+                    .show()
+            } else {
+                // 打开文件
+                openFile(item.file)
             }
         }
-
-        fileTreeAdapter.notifyDataSetChanged()
     }
 
-    private fun getChildren(dir: File, level: Int): List<FileTreeItem> {
-        val children = mutableListOf<FileTreeItem>()
-        val files = dir.listFiles()?.toList() ?: emptyList()
-
-        // 排序：文件夹在前，文件在后
-        val sortedFiles = files.sortedWith(compareBy({ !it.isDirectory }, { it.name }))
-
-        for (file in sortedFiles) {
-            val item = FileTreeItem(
-                file = file,
-                name = file.name,
-                isDirectory = file.isDirectory,
-                size = if (file.isDirectory) 0 else file.length(),
-                level = level,
-                isExpanded = false
-            )
-            children.add(item)
+    private fun navigateToParentDir() {
+        currentDir?.parentFile?.let { parent ->
+            currentDir = parent
+            loadCurrentDir()
         }
-
-        return children
     }
 
     private fun updatePathDisplay() {
-        val shortPath = getShortPath()
+        val currentPath = currentDir?.absolutePath ?: rootDir?.absolutePath ?: "/workspace"
+        val workspaceName = workspacePath?.let { File(it).name } ?: return
+        val index = currentPath.indexOf(workspaceName)
+        val shortPath = if (index >= 0) {
+            currentPath.substring(index)
+        } else {
+            currentPath
+        }
         findViewById<TextView>(R.id.tv_workspace_path)?.text = shortPath
+    }
+
+    private fun updateRecentFilesBar() {
+        val container = findViewById<LinearLayout>(R.id.recent_files_container) ?: return
+
+        // 保留第一个 TextView（"最近打开: "）
+        val titleView = container.getChildAt(0) as? TextView
+        container.removeAllViews()
+        titleView?.let { container.addView(it) }
+
+        // 添加最近文件标签
+        for (file in recentFiles) {
+            val fileTag = TextView(this).apply {
+                text = file.name
+                textSize = 12f
+                setPadding(12, 6, 12, 6)
+                setOnClickListener {
+                    // 点击标签切换文件
+                    if (isContentModified()) {
+                        AlertDialog.Builder(this@WorkspaceActivity)
+                            .setTitle("未保存的更改")
+                            .setMessage("当前文件有未保存的更改，是否保存？")
+                            .setPositiveButton("保存并打开") { _, _ ->
+                                saveCurrentFile()
+                                openFile(file)
+                            }
+                            .setNegativeButton("不保存打开") { _, _ ->
+                                openFile(file)
+                            }
+                            .setNeutralButton("取消", null)
+                            .show()
+                    } else {
+                        openFile(file)
+                    }
+                }
+            }
+
+            // 高亮当前打开的文件
+            if (currentFile != null && currentFile?.absolutePath == file.absolutePath) {
+                fileTag.setBackgroundColor(0xFF3399FF.toInt())
+                fileTag.setTextColor(0xFFFFFFFF.toInt())
+            } else {
+                fileTag.setBackgroundColor(0xFF3C3C3C.toInt())
+                fileTag.setTextColor(0xFFCCCCCC.toInt())
+            }
+
+            container.addView(fileTag)
+        }
     }
 
     private fun getShortPath(): String {
@@ -218,6 +257,10 @@ class WorkspaceActivity : Activity() {
         try {
             val content = file.readText()
             currentFile = file
+            originalContent = content  // 保存原始内容
+
+            // 添加到最近文件列表
+            addToRecentFiles(file)
 
             val emptyState = findViewById<TextView>(R.id.empty_state)
             val editorScroll = findViewById<android.widget.ScrollView>(R.id.editor_scroll)
@@ -231,16 +274,35 @@ class WorkspaceActivity : Activity() {
             updatePathDisplay()
             // 更新行号
             updateLineNumbers()
+            // 更新最近文件顶栏
+            updateRecentFilesBar()
         } catch (e: Exception) {
             Toast.makeText(this, "无法打开文件: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
+    private fun addToRecentFiles(file: File) {
+        // 移除已存在的相同文件
+        recentFiles.removeAll { it.absolutePath == file.absolutePath }
+        // 添加到列表开头
+        recentFiles.add(0, file)
+        // 限制最多保留 10 个最近文件
+        if (recentFiles.size > 10) {
+            recentFiles.removeAt(recentFiles.size - 1)
+        }
+    }
+
     private fun saveCurrentFile() {
-        val content = findViewById<EditText>(R.id.editor_content)?.text.toString()
+        val editorContent = findViewById<EditText>(R.id.editor_content) ?: return
+        val content = editorContent.text.toString()
         currentFile?.let { file ->
             try {
                 file.writeText(content)
+                originalContent = content  // 更新原始内容
+
+                // 更新文件树中当前文件的大小
+                updateFileSizeInTree(file)
+
                 Toast.makeText(this, "文件已保存", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Toast.makeText(this, "保存失败: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -248,20 +310,55 @@ class WorkspaceActivity : Activity() {
         }
     }
 
+    private fun updateFileSizeInTree(file: File) {
+        // 查找文件树中对应的文件项并更新大小
+        for (item in fileTree) {
+            if (!item.isDirectory && item.file.absolutePath == file.absolutePath) {
+                item.size = file.length()
+                break
+            }
+        }
+        fileTreeAdapter.notifyDataSetChanged()
+    }
+
+    private fun isContentModified(): Boolean {
+        // 如果没有打开文件，不算有未保存的更改
+        if (currentFile == null) return false
+
+        val currentContent = findViewById<EditText>(R.id.editor_content)?.text.toString()
+        return currentContent != originalContent
+    }
+
     override fun onBackPressed() {
         handleBackPress()
     }
 
     private fun handleBackPress() {
-        // 直接返回主页，不再返回上级目录
-        AlertDialog.Builder(this)
-            .setTitle("返回主页")
-            .setMessage("确定要返回主页吗？")
-            .setPositiveButton("确定") { _, _ ->
-                finish()
-            }
-            .setNegativeButton("取消", null)
-            .show()
+        // 检查是否有未保存的更改
+        if (isContentModified()) {
+            AlertDialog.Builder(this)
+                .setTitle("未保存的更改")
+                .setMessage("当前文件有未保存的更改，是否保存？")
+                .setPositiveButton("保存并返回") { _, _ ->
+                    saveCurrentFile()
+                    finish()
+                }
+                .setNegativeButton("不保存返回") { _, _ ->
+                    finish()
+                }
+                .setNeutralButton("取消", null)
+                .show()
+        } else {
+            // 直接返回主页
+            AlertDialog.Builder(this)
+                .setTitle("返回主页")
+                .setMessage("确定要返回主页吗？")
+                .setPositiveButton("确定") { _, _ ->
+                    finish()
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        }
     }
 
     private fun showNewOptionsDialog() {
@@ -318,7 +415,7 @@ class WorkspaceActivity : Activity() {
             try {
                 newFile.createNewFile()
                 Toast.makeText(this, "文件创建成功", Toast.LENGTH_SHORT).show()
-                loadFileTree()
+                loadCurrentDir()
             } catch (e: Exception) {
                 Toast.makeText(this, "文件创建失败: ${e.message}", Toast.LENGTH_SHORT).show()
             }
@@ -334,7 +431,7 @@ class WorkspaceActivity : Activity() {
             }
             if (newFolder.mkdirs()) {
                 Toast.makeText(this, "文件夹创建成功", Toast.LENGTH_SHORT).show()
-                loadFileTree()
+                loadCurrentDir()
             } else {
                 Toast.makeText(this, "文件夹创建失败", Toast.LENGTH_SHORT).show()
             }
@@ -395,7 +492,7 @@ class WorkspaceActivity : Activity() {
         }
         if (file.renameTo(newFile)) {
             Toast.makeText(this, "重命名成功", Toast.LENGTH_SHORT).show()
-            loadFileTree()
+            loadCurrentDir()
         } else {
             Toast.makeText(this, "重命名失败", Toast.LENGTH_SHORT).show()
         }
@@ -415,7 +512,24 @@ class WorkspaceActivity : Activity() {
     private fun deleteFile(file: File) {
         if (file.deleteRecursively()) {
             Toast.makeText(this, "删除成功", Toast.LENGTH_SHORT).show()
-            loadFileTree()
+
+            // 检查是否删除了当前正在编辑的文件
+            if (currentFile != null && currentFile?.absolutePath == file.absolutePath) {
+                // 清空编辑器
+                currentFile = null
+                originalContent = null
+                val emptyState = findViewById<TextView>(R.id.empty_state)
+                val editorScroll = findViewById<android.widget.ScrollView>(R.id.editor_scroll)
+                val editorContent = findViewById<EditText>(R.id.editor_content)
+                val lineNumbers = findViewById<TextView>(R.id.line_numbers)
+
+                emptyState?.visibility = View.VISIBLE
+                editorScroll?.visibility = View.GONE
+                editorContent?.text?.clear()
+                lineNumbers?.text = ""
+            }
+
+            loadCurrentDir()
         } else {
             Toast.makeText(this, "删除失败", Toast.LENGTH_SHORT).show()
         }
@@ -445,9 +559,7 @@ class WorkspaceActivity : Activity() {
         val file: File,
         val name: String,
         val isDirectory: Boolean,
-        val size: Long,
-        val level: Int = 0,
-        var isExpanded: Boolean = false
+        var size: Long
     )
 
     // 文件树适配器
@@ -467,19 +579,17 @@ class WorkspaceActivity : Activity() {
             val fileName = view.findViewById<TextView>(R.id.tv_file_name)
             val fileSize = view.findViewById<TextView>(R.id.tv_file_size)
 
-            // 设置展开/折叠指示器
-            if (item.isDirectory) {
-                expandIndicator?.visibility = View.VISIBLE
-                expandIndicator?.rotation = if (item.isExpanded) 90f else 0f
-            } else {
-                expandIndicator?.visibility = View.GONE
-            }
-
             // 设置图标
             if (item.isDirectory) {
+                // 文件夹使用文件夹图标
+                expandIndicator?.visibility = View.VISIBLE
+                expandIndicator?.setImageResource(android.R.drawable.ic_menu_add)
+                expandIndicator?.rotation = 0f
                 fileIcon?.visibility = View.GONE
                 fileSize?.visibility = View.GONE
             } else {
+                // 文件使用文件图标
+                expandIndicator?.visibility = View.GONE
                 fileIcon?.visibility = View.VISIBLE
                 fileIcon?.setImageResource(android.R.drawable.ic_menu_info_details)
                 fileSize?.visibility = View.VISIBLE
@@ -488,10 +598,10 @@ class WorkspaceActivity : Activity() {
 
             // 设置文件名
             fileName?.text = item.name
+            fileName?.setTextColor(0xFFCCCCCC.toInt())
 
-            // 设置缩进
-            val padding = (item.level * 24).coerceAtMost(200)
-            view.setPadding(padding, view.paddingTop, view.paddingRight, view.paddingBottom)
+            // 清除缩进
+            view.setPadding(8, view.paddingTop, view.paddingRight, view.paddingBottom)
 
             return view
         }
