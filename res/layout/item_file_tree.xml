@@ -1,18 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
+    android:layout_height="48dp"
     android:orientation="horizontal"
     android:gravity="center_vertical"
-    android:padding="8dp"
+    android:paddingLeft="12dp"
+    android:paddingRight="12dp"
     android:background="@android:color/transparent">
+
+    <!-- 选中复选框 -->
+    <CheckBox
+        android:id="@+id/checkbox_selected"
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:layout_marginRight="8dp"
+        android:buttonTint="#4A90E2"
+        android:visibility="gone" />
 
     <!-- 展开/折叠指示器 -->
     <ImageView
         android:id="@+id/iv_expand_indicator"
-        android:layout_width="16dp"
-        android:layout_height="16dp"
-        android:src="@android:drawable/arrow_down_float"
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:src="@android:drawable/ic_menu_add"
         android:tint="#666666"
         android:visibility="gone"
         android:padding="2dp" />
@@ -20,8 +30,8 @@
     <!-- 文件/文件夹图标 -->
     <ImageView
         android:id="@+id/iv_file_icon"
-        android:layout_width="24dp"
-        android:layout_height="24dp"
+        android:layout_width="20dp"
+        android:layout_height="20dp"
         android:src="@android:drawable/ic_menu_info_details"
         android:tint="#CCCCCC"
         android:layout_marginLeft="4dp"
@@ -40,7 +50,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="filename"
-            android:textSize="14sp"
+            android:textSize="13sp"
             android:textColor="#CCCCCC"
             android:singleLine="true"
             android:ellipsize="end" />
@@ -49,8 +59,7 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginTop="2dp">
+            android:orientation="horizontal">
 
             <!-- 文件大小 -->
             <TextView
@@ -58,7 +67,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="0 B"
-                android:textSize="11sp"
+                android:textSize="10sp"
                 android:textColor="#666666" />
 
             <!-- 分隔符 -->
@@ -66,7 +75,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text=" • "
-                android:textSize="11sp"
+                android:textSize="10sp"
                 android:textColor="#666666"
                 android:layout_marginLeft="4dp"
                 android:layout_marginRight="4dp" />
@@ -78,7 +87,7 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="2024-01-01 12:00"
-                android:textSize="11sp"
+                android:textSize="10sp"
                 android:textColor="#666666"
                 android:singleLine="true"
                 android:ellipsize="end" />

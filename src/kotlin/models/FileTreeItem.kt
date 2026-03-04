@@ -13,7 +13,8 @@ data class FileTreeItem(
     val name: String,
     val isDirectory: Boolean,
     val size: Long = 0,
-    val lastModified: Long = 0
+    val lastModified: Long = 0,
+    var isSelected: Boolean = false
 ) : Parcelable {
 
     /**
@@ -85,7 +86,8 @@ data class FileTreeItem(
                     name = parcel.readString() ?: "",
                     isDirectory = parcel.readByte() != 0.toByte(),
                     size = parcel.readLong(),
-                    lastModified = parcel.readLong()
+                    lastModified = parcel.readLong(),
+                    isSelected = parcel.readByte() != 0.toByte()
                 )
             }
 
@@ -101,6 +103,7 @@ data class FileTreeItem(
         parcel.writeByte(if (isDirectory) 1 else 0)
         parcel.writeLong(size)
         parcel.writeLong(lastModified)
+        parcel.writeByte(if (isSelected) 1 else 0)
     }
 
     override fun describeContents(): Int {

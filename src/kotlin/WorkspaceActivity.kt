@@ -56,6 +56,7 @@ class WorkspaceActivity : Activity() {
 
     private lateinit var fileTreeAdapter: FileTreeAdapter
     private var fileTree: MutableList<FileTreeItem> = mutableListOf()
+    private var isSelectionMode = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -163,7 +164,11 @@ class WorkspaceActivity : Activity() {
         // 文件树点击事件
         fileTreeView.setOnItemClickListener { _, _, position, _ ->
             val item = fileTree[position]
-            onFileTreeItemClick(item)
+            if (isSelectionMode && !item.isParentDir) {
+                fileTreeAdapter.toggleSelection(position)
+            } else {
+                onFileTreeItemClick(item)
+            }
         }
 
         // 文件树长按事件
@@ -175,7 +180,11 @@ class WorkspaceActivity : Activity() {
                 loadCurrentDir()
                 true
             } else {
-                showFileOptions(item)
+                if (isSelectionMode) {
+                    fileTreeAdapter.toggleSelection(position)
+                } else {
+                    showFileOptions(item)
+                }
                 true
             }
         }
@@ -208,8 +217,8 @@ class WorkspaceActivity : Activity() {
     private fun loadCurrentDir() {
         fileTree.clear()
         fileTree.addAll(fileManager.loadCurrentDir())
-        // 重新创建适配器，传入当前文件信息以实现高亮
-        fileTreeAdapter = FileTreeAdapter(this, fileTree, editorManager.getCurrentFile())
+        // 重新创建适配器，传入当前文件信息和选择模式
+        fileTreeAdapter = FileTreeAdapter(this, fileTree, editorManager.getCurrentFile(), isSelectionMode)
         val fileTreeView = findViewById<ListView>(R.id.file_tree)
         fileTreeView.adapter = fileTreeAdapter
         updatePathDisplay()
@@ -424,11 +433,107 @@ class WorkspaceActivity : Activity() {
     }
 
     private fun showExplorerSettingsDialog() {
-        // 占位功能：显示资源管理器设置对话框
-        DialogHelper.showMessageDialog(
+        val options = when {
+            isSelectionMode -> arrayOf("全选", "取消选择", "批量删除", "退出选择模式")
+            else -> arrayOf("排序: 名称 (A→Z)", "排序: 名称 (Z→A)", "排序: 大小 (小→大)", "排序: 大小 (大→小)", "排序: 时间 (旧→新)", "排序: 时间 (新→旧)", "批量选择")
+        }
+
+        DialogHelper.showOptionsDialog(
             context = this,
-            title = "资源管理器设置",
-            message = "资源管理器设置功能即将推出"
+            title = if (isSelectionMode) "批量操作" else "资源管理器设置",
+            options = options
+        ) { which ->
+            when {
+                isSelectionMode -> {
+                    when (which) {
+                        0 -> selectAll()
+                        1 -> clearSelection()
+                        2 -> batchDelete()
+                        3 -> exitSelectionMode()
+                    }
+                }
+                else -> {
+                    when (which) {
+                        0 -> setSortMode(FileManager.SortMode.NAME_ASC)
+                        1 -> setSortMode(FileManager.SortMode.NAME_DESC)
+                        2 -> setSortMode(FileManager.SortMode.SIZE_ASC)
+                        3 -> setSortMode(FileManager.SortMode.SIZE_DESC)
+                        4 -> setSortMode(FileManager.SortMode.MODIFIED_ASC)
+                        5 -> setSortMode(FileManager.SortMode.MODIFIED_DESC)
+                        6 -> enterSelectionMode()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun setSortMode(mode: FileManager.SortMode) {
+        fileManager.setSortMode(mode)
+        loadCurrentDir()
+        val modeName = when (mode) {
+            FileManager.SortMode.NAME_ASC -> "名称 (A→Z)"
+            FileManager.SortMode.NAME_DESC -> "名称 (Z→A)"
+            FileManager.SortMode.SIZE_ASC -> "大小 (小→大)"
+            FileManager.SortMode.SIZE_DESC -> "大小 (大→小)"
+            FileManager.SortMode.MODIFIED_ASC -> "时间 (旧→新)"
+            FileManager.SortMode.MODIFIED_DESC -> "时间 (新→旧)"
+        }
+        Toast.makeText(this, "已按 $modeName 排序", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun enterSelectionMode() {
+        isSelectionMode = true
+        fileTreeAdapter.setSelectionMode(true)
+        Toast.makeText(this, "已进入批量选择模式，点击文件进行选择", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun exitSelectionMode() {
+        isSelectionMode = false
+        fileTreeAdapter.setSelectionMode(false)
+        fileTreeAdapter.clearSelection()
+        Toast.makeText(this, "已退出批量选择模式", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun selectAll() {
+        fileTree.forEach { if (!it.isParentDir) it.isSelected = true }
+        fileTreeAdapter.notifyDataSetChanged()
+    }
+
+    private fun clearSelection() {
+        fileTreeAdapter.clearSelection()
+    }
+
+    private fun batchDelete() {
+        val selectedItems = fileTreeAdapter.getSelectedItems()
+        if (selectedItems.isEmpty()) {
+            Toast.makeText(this, "请先选择要删除的文件", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        DialogHelper.showConfirmDialog(
+            context = this,
+            title = "批量删除",
+            message = "确定要删除选中的 ${selectedItems.size} 个项目吗？",
+            onConfirm = {
+                var successCount = 0
+                var failCount = 0
+
+                selectedItems.forEach { item ->
+                    fileManager.deleteFile(item.file)
+                        .onSuccess { successCount++ }
+                        .onFailure { failCount++ }
+                }
+
+                val message = if (failCount == 0) {
+                    "成功删除 $successCount 个项目"
+                } else {
+                    "成功删除 $successCount 个项目，失败 $failCount 个"
+                }
+
+                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+                exitSelectionMode()
+                loadCurrentDir()
+            }
         )
     }
 

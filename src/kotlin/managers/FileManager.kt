@@ -10,9 +10,19 @@ import java.io.File
  */
 class FileManager {
 
+    enum class SortMode {
+        NAME_ASC,          // 名称升序
+        NAME_DESC,         // 名称降序
+        SIZE_ASC,          // 大小升序
+        SIZE_DESC,         // 大小降序
+        MODIFIED_ASC,      // 修改时间升序
+        MODIFIED_DESC      // 修改时间降序
+    }
+
     private var rootDir: File? = null
     private var currentDir: File? = null
     private val fileTree = mutableListOf<FileTreeItem>()
+    private var sortMode = SortMode.NAME_ASC
 
     /**
      * 初始化文件管理器
@@ -22,6 +32,20 @@ class FileManager {
         rootDir = File(workspacePath)
         currentDir = rootDir
     }
+
+    /**
+     * 设置排序模式
+     * @param mode 排序模式
+     */
+    fun setSortMode(mode: SortMode) {
+        sortMode = mode
+    }
+
+    /**
+     * 获取当前排序模式
+     * @return 排序模式
+     */
+    fun getSortMode(): SortMode = sortMode
 
     /**
      * 获取根目录
@@ -59,15 +83,41 @@ class FileManager {
 
             // 加载当前目录的内容
             val files = dir.listFiles()?.toList() ?: emptyList()
-            // 排序：文件夹在前，文件在后，按名称排序
-            val sortedFiles = files.sortedWith(compareBy({ !it.isDirectory }, { it.name }))
 
+            // 分离文件夹和文件
+            val directories = files.filter { it.isDirectory }
+            val normalFiles = files.filter { !it.isDirectory }
+
+            // 根据排序模式分别排序文件夹和文件
+            val sortedDirs = sortFiles(directories)
+            val sortedFiles = sortFiles(normalFiles)
+
+            // 文件夹在前，文件在后
+            for (dir in sortedDirs) {
+                fileTree.add(FileTreeItem.fromFile(dir))
+            }
             for (file in sortedFiles) {
                 fileTree.add(FileTreeItem.fromFile(file))
             }
         }
 
         return fileTree.toList()
+    }
+
+    /**
+     * 根据当前排序模式排序文件列表
+     * @param files 文件列表
+     * @return 排序后的文件列表
+     */
+    private fun sortFiles(files: List<File>): List<File> {
+        return when (sortMode) {
+            SortMode.NAME_ASC -> files.sortedBy { it.name.lowercase() }
+            SortMode.NAME_DESC -> files.sortedByDescending { it.name.lowercase() }
+            SortMode.SIZE_ASC -> files.sortedBy { it.length() }
+            SortMode.SIZE_DESC -> files.sortedByDescending { it.length() }
+            SortMode.MODIFIED_ASC -> files.sortedBy { it.lastModified() }
+            SortMode.MODIFIED_DESC -> files.sortedByDescending { it.lastModified() }
+        }
     }
 
     /**
