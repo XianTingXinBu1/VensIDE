@@ -43,6 +43,16 @@ class UIBindingManager(
         }
     }
 
+    override fun bindUndoRedoButtons(onUndo: () -> Unit, onRedo: () -> Unit) {
+        activity.findViewById<ImageView>(R.id.btn_undo)?.setOnClickListener {
+            onUndo()
+        }
+
+        activity.findViewById<ImageView>(R.id.btn_redo)?.setOnClickListener {
+            onRedo()
+        }
+    }
+
     override fun bindPathDisplay(onLongPress: () -> Boolean, onClick: () -> Unit) {
         activity.findViewById<TextView>(R.id.tv_workspace_path)?.setOnLongClickListener {
             onLongPress()
@@ -55,35 +65,48 @@ class UIBindingManager(
 
     override fun bindDragDrop(onMove: (Int, Int) -> Unit) {
         val container = activity.findViewById<LinearLayout>(R.id.recent_files_container)
-        container?.setOnDragListener { v, event ->
+        container?.setOnDragListener { _, event ->
+            val draggedView = event.localState as? View ?: return@setOnDragListener false
+
             when (event.action) {
                 android.view.DragEvent.ACTION_DRAG_STARTED -> true
                 android.view.DragEvent.ACTION_DRAG_ENTERED -> true
-                android.view.DragEvent.ACTION_DRAG_EXITED -> true
-                android.view.DragEvent.ACTION_DROP -> {
-                    val fromIndex = event.clipData.getItemAt(0).text.toString().toIntOrNull() ?: -1
-                    val toIndex = calculateDropPosition(container, event)
-                    if (fromIndex >= 0 && toIndex >= 0 && fromIndex != toIndex) {
-                        onMove(fromIndex, toIndex)
+                android.view.DragEvent.ACTION_DRAG_LOCATION -> {
+                    val targetView = findChildAt(container, event.x, event.y)
+                    if (targetView != null && targetView != draggedView) {
+                        val fromIndex = container.indexOfChild(draggedView)
+                        val toIndex = container.indexOfChild(targetView)
+
+                        if (fromIndex >= 1 && toIndex >= 1 && fromIndex != toIndex) {
+                            container.removeView(draggedView)
+                            container.addView(draggedView, toIndex)
+                            onMove(fromIndex - 1, toIndex - 1)  // 减1因为第一个是标题
+                        }
                     }
                     true
                 }
-                android.view.DragEvent.ACTION_DRAG_ENDED -> true
+                android.view.DragEvent.ACTION_DRAG_EXITED -> true
+                android.view.DragEvent.ACTION_DROP -> {
+                    draggedView.alpha = 1.0f
+                    true
+                }
+                android.view.DragEvent.ACTION_DRAG_ENDED -> {
+                    draggedView.alpha = 1.0f
+                    true
+                }
                 else -> false
             }
         }
     }
 
-    private fun calculateDropPosition(container: LinearLayout, event: android.view.DragEvent): Int {
-        val y = event.y
-        var position = 0
-        for (i in 0 until container.childCount) {
+    private fun findChildAt(container: LinearLayout, x: Float, y: Float): View? {
+        for (i in 1 until container.childCount) {  // 从1开始，跳过标题
             val child = container.getChildAt(i)
-            if (y > child.bottom) {
-                position = i + 1
+            if (x >= child.left && x <= child.right && y >= child.top && y <= child.bottom) {
+                return child
             }
         }
-        return position.coerceIn(0, container.childCount - 1)
+        return null
     }
 
     override fun bindNewButton(onClick: () -> Unit) {
@@ -112,7 +135,11 @@ class UIBindingManager(
         }
     }
 
-    override fun bindEditorListeners(onEditorClick: () -> Unit, onContentChanged: () -> Unit) {
+    override fun bindEditorListeners(
+        onEditorClick: () -> Unit, 
+        onContentChanged: () -> Unit,
+        onTextChanged: (Int, Int, Int) -> Unit
+    ) {
         activity.findViewById<ScrollView>(R.id.editor_scroll)?.setOnClickListener {
             onEditorClick()
         }
@@ -127,7 +154,11 @@ class UIBindingManager(
 
         activity.findViewById<EditText>(R.id.editor_content)?.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                onTextChanged(start, before, count)
+            }
+            
             override fun afterTextChanged(s: Editable?) {
                 onContentChanged()
             }
@@ -161,4 +192,8 @@ class UIBindingManager(
     override fun getSidebarPathTextView(): TextView? = activity.findViewById(R.id.tv_sidebar_path)
 
     override fun getWordCountTextView(): TextView? = activity.findViewById(R.id.tv_word_count)
+
+    override fun getUndoButton(): ImageView? = activity.findViewById(R.id.btn_undo)
+
+    override fun getRedoButton(): ImageView? = activity.findViewById(R.id.btn_redo)
 }

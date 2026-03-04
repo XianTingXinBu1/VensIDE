@@ -21,6 +21,7 @@ import com.venside.x1n.managers.SidebarManager
 import com.venside.x1n.managers.SymbolBarManager
 import com.venside.x1n.managers.UIBindingManager
 import com.venside.x1n.managers.UIStateManager
+import com.venside.x1n.managers.UndoRedoManager
 import com.venside.x1n.managers.interfaces.IBackPressHandler
 import com.venside.x1n.managers.interfaces.IDialogCoordinator
 import com.venside.x1n.managers.interfaces.IFileOperationManager
@@ -42,6 +43,7 @@ class WorkspaceActivity : Activity() {
     // 核心管理器
     private val fileManager = FileManager()
     private val editorManager = EditorManager()
+    private val undoRedoManager = UndoRedoManager()
     private val recentFilesManager = RecentFilesManager()
     private val preferencesManager: PreferencesManager by lazy { PreferencesManager(this) }
 
@@ -116,6 +118,11 @@ class WorkspaceActivity : Activity() {
             onSave = { saveCurrentFile() }
         )
 
+        uiBindingManager.bindUndoRedoButtons(
+            onUndo = { performUndo() },
+            onRedo = { performRedo() }
+        )
+
         uiBindingManager.bindPathDisplay(
             onLongPress = { handlePathLongPress() },
             onClick = { handlePathClick() }
@@ -141,7 +148,8 @@ class WorkspaceActivity : Activity() {
 
         uiBindingManager.bindEditorListeners(
             onEditorClick = { if (selectionManager.isSelectionMode()) exitSelectionMode() },
-            onContentChanged = { updateLineNumbers(); updateWordCount() }
+            onContentChanged = { updateLineNumbers(); updateWordCount() },
+            onTextChanged = { start, before, count -> recordTextChange(start, before, count) }
         )
 
         uiBindingManager.bindWordCountButton {
@@ -278,6 +286,11 @@ class WorkspaceActivity : Activity() {
     // ==================== 文件操作 ====================
 
     private fun openFileWithUnsavedCheck(file: File) {
+        // 如果点击的是当前正在编辑的文件，不做任何操作
+        if (editorManager.isCurrentFile(file)) {
+            return
+        }
+        
         val content = uiBindingManager.getEditorContent()?.text.toString() ?: ""
         val hasUnsavedChanges = backPressHandler.isContentModified(content)
         
@@ -304,10 +317,12 @@ class WorkspaceActivity : Activity() {
     private fun openFile(file: File) {
         fileOperationManager.openFile(file,
             onSuccess = { content ->
-                recentFilesManager.addFile(file)
+                recentFilesManager.ensureFile(file)
                 uiBindingManager.getEmptyState()?.visibility = android.view.View.GONE
                 uiBindingManager.getEditorScroll()?.visibility = android.view.View.VISIBLE
                 uiBindingManager.getEditorContent()?.setText(content)
+                previousContent = content
+                resetUndoRedoState()
                 updatePathDisplay()
                 updateLineNumbers()
                 updateRecentFilesBar()
@@ -522,6 +537,98 @@ class WorkspaceActivity : Activity() {
         )
     }
 
+    // ==================== 撤销/重做操作 ====================
+
+    private var previousContent: String = ""
+    private var isUndoRedoAction: Boolean = false
+
+    private fun recordTextChange(start: Int, before: Int, count: Int) {
+        if (isUndoRedoAction) return
+        
+        val editorContent = uiBindingManager.getEditorContent() ?: return
+        val currentContent = editorContent.text.toString()
+        
+        // 边界检查：确保 substring 不会越界
+        val safeStart = start.coerceIn(0, previousContent.length)
+        val safeEnd = (start + before).coerceIn(0, previousContent.length)
+        
+        if (before > 0 && count == 0 && safeEnd > safeStart) {
+            // 删除操作
+            val deletedText = previousContent.substring(safeStart, safeEnd)
+            undoRedoManager.recordDelete(safeStart, deletedText)
+        } else if (count > 0 && before == 0) {
+            // 插入操作
+            val insertedText = currentContent.substring(start, (start + count).coerceAtMost(currentContent.length))
+            undoRedoManager.recordInsert(start, insertedText)
+        } else if (before > 0 && count > 0 && safeEnd > safeStart) {
+            // 替换操作（记录为删除+插入）
+            val deletedText = previousContent.substring(safeStart, safeEnd)
+            val insertedText = currentContent.substring(start, (start + count).coerceAtMost(currentContent.length))
+            undoRedoManager.recordDelete(safeStart, deletedText)
+            undoRedoManager.recordInsert(start, insertedText)
+        }
+        
+        previousContent = currentContent
+        updateUndoRedoButtons()
+    }
+
+    private fun performUndo() {
+        val editorContent = uiBindingManager.getEditorContent() ?: return
+        val currentContent = editorContent.text.toString()
+        
+        val newContent = undoRedoManager.undo(currentContent)
+        if (newContent != null) {
+            isUndoRedoAction = true
+            editorContent.setText(newContent)
+            previousContent = newContent
+            isUndoRedoAction = false
+            updateLineNumbers()
+            updateWordCount()
+        }
+        updateUndoRedoButtons()
+    }
+
+    private fun performRedo() {
+        val editorContent = uiBindingManager.getEditorContent() ?: return
+        val currentContent = editorContent.text.toString()
+        
+        val newContent = undoRedoManager.redo(currentContent)
+        if (newContent != null) {
+            isUndoRedoAction = true
+            editorContent.setText(newContent)
+            previousContent = newContent
+            isUndoRedoAction = false
+            updateLineNumbers()
+            updateWordCount()
+        }
+        updateUndoRedoButtons()
+    }
+
+    private fun updateUndoRedoButtons() {
+        val undoBtn = uiBindingManager.getUndoButton()
+        val redoBtn = uiBindingManager.getRedoButton()
+        
+        undoBtn?.let { btn ->
+            val canUndo = undoRedoManager.canUndo()
+            btn.isEnabled = canUndo
+            btn.imageAlpha = if (canUndo) 255 else 128
+            btn.setColorFilter(if (canUndo) 0xFFCCCCCC.toInt() else 0xFF666666.toInt())
+        }
+        
+        redoBtn?.let { btn ->
+            val canRedo = undoRedoManager.canRedo()
+            btn.isEnabled = canRedo
+            btn.imageAlpha = if (canRedo) 255 else 128
+            btn.setColorFilter(if (canRedo) 0xFFCCCCCC.toInt() else 0xFF666666.toInt())
+        }
+    }
+
+    private fun resetUndoRedoState() {
+        undoRedoManager.reset()
+        previousContent = ""
+        updateUndoRedoButtons()
+    }
+
     private fun clearEditor() {
         uiStateManager.clearEditor(
             emptyState = uiBindingManager.getEmptyState(),
@@ -530,6 +637,7 @@ class WorkspaceActivity : Activity() {
             lineNumbers = uiBindingManager.getLineNumbers(),
             wordCountBar = uiBindingManager.getWordCountBar()
         )
+        resetUndoRedoState()
         updatePathDisplay()
         loadCurrentDir()
     }

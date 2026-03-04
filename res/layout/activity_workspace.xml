@@ -43,6 +43,30 @@
             android:padding="4dp"
             android:background="#1E1E1E" />
 
+        <!-- 撤销按钮 -->
+        <ImageView
+            android:id="@+id/btn_undo"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@android:drawable/ic_menu_close_clear_cancel"
+            android:tint="#666666"
+            android:padding="8dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="撤销"
+            android:enabled="false" />
+
+        <!-- 重做按钮 -->
+        <ImageView
+            android:id="@+id/btn_redo"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@android:drawable/ic_menu_rotate"
+            android:tint="#666666"
+            android:padding="8dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="重做"
+            android:enabled="false" />
+
         <!-- 保存按钮 -->
         <ImageView
             android:id="@+id/btn_save"

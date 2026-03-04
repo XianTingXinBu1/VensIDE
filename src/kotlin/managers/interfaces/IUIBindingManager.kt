@@ -27,6 +27,13 @@ interface IUIBindingManager {
     fun bindNavigationButtons(onBack: () -> Unit, onSave: () -> Unit)
     
     /**
+     * 绑定撤销/重做按钮
+     * @param onUndo 撤销回调
+     * @param onRedo 重做回调
+     */
+    fun bindUndoRedoButtons(onUndo: () -> Unit, onRedo: () -> Unit)
+    
+    /**
      * 绑定路径显示控件
      * @param onLongPress 长按复制路径回调
      * @param onClick 点击回调
@@ -61,8 +68,13 @@ interface IUIBindingManager {
      * 绑定编辑器区域监听器
      * @param onEditorClick 编辑器点击回调
      * @param onContentChanged 内容变化回调
+     * @param onTextChanged 文本变化回调 (start, before, count)
      */
-    fun bindEditorListeners(onEditorClick: () -> Unit, onContentChanged: () -> Unit)
+    fun bindEditorListeners(
+        onEditorClick: () -> Unit, 
+        onContentChanged: () -> Unit,
+        onTextChanged: (start: Int, before: Int, count: Int) -> Unit = { _, _, _ -> }
+    )
     
     /**
      * 绑定字数统计按钮
@@ -124,4 +136,14 @@ interface IUIBindingManager {
      * 获取字数统计文本视图
      */
     fun getWordCountTextView(): TextView?
+    
+    /**
+     * 获取撤销按钮
+     */
+    fun getUndoButton(): android.widget.ImageView?
+    
+    /**
+     * 获取重做按钮
+     */
+    fun getRedoButton(): android.widget.ImageView?
 }

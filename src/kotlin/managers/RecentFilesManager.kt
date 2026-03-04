@@ -35,6 +35,20 @@ class RecentFilesManager {
     }
 
     /**
+     * 确保文件在列表中（用于切换文件，不改变顺序）
+     * @param file 文件对象
+     */
+    fun ensureFile(file: File) {
+        // 如果文件已在列表中，不改变顺序
+        if (recentFiles.any { it.absolutePath == file.absolutePath }) {
+            return
+        }
+        // 如果文件不在列表中，添加到开头
+        recentFiles.add(0, file)
+        trimExcessFiles()
+    }
+
+    /**
      * 从最近文件列表中移除文件
      * @param file 文件对象
      */
