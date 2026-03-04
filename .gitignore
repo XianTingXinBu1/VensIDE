@@ -27,8 +27,9 @@ build/
 # NDK 相关
 .cxx/
 
-# 额外文档
+# 个人备忘录
 INSTALL_TEST_GUIDE.md
+核心.md
 
 # 构建配置
 Makefile

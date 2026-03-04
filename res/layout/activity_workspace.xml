@@ -249,6 +249,38 @@
                     </HorizontalScrollView>
                 </ScrollView>
             </LinearLayout>
+
+            <!-- 字数统计栏 -->
+            <LinearLayout
+                android:id="@+id/word_count_bar"
+                android:layout_width="match_parent"
+                android:layout_height="28dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:background="#252526"
+                android:paddingLeft="12dp"
+                android:paddingRight="12dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/tv_word_count"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="0 字符 | 0 行"
+                    android:textSize="11sp"
+                    android:textColor="#999999" />
+
+                <ImageView
+                    android:id="@+id/btn_word_count_details"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:src="@android:drawable/ic_menu_info_details"
+                    android:tint="#CCCCCC"
+                    android:padding="4dp"
+                    android:background="?android:attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="字数统计详情" />
+            </LinearLayout>
         </LinearLayout>
     </LinearLayout>
 

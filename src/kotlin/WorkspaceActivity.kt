@@ -102,6 +102,21 @@ class WorkspaceActivity : Activity() {
             }
         }
 
+        // 路径显示长按事件
+        findViewById<TextView>(R.id.tv_workspace_path)?.setOnLongClickListener {
+            val currentFile = editorManager.getCurrentFile()
+            if (currentFile != null) {
+                // 复制完整路径到剪贴板
+                val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                val clip = android.content.ClipData.newPlainText("文件路径", currentFile.absolutePath)
+                clipboard.setPrimaryClip(clip)
+                Toast.makeText(this, "已复制完整路径", Toast.LENGTH_SHORT).show()
+                true
+            } else {
+                false
+            }
+        }
+
         // 设置最近文件栏的拖拽事件监听器
         val recentFilesContainer = findViewById<LinearLayout>(R.id.recent_files_container)
         recentFilesContainer?.let {
@@ -115,9 +130,28 @@ class WorkspaceActivity : Activity() {
             showNewOptionsDialog()
         }
 
-        // 返回上级文件夹按钮（复用侧边栏切换按钮）
+        // 资源管理器展开/关闭按钮长按事件
         findViewById<ImageView>(R.id.btn_toggle_sidebar)?.setOnLongClickListener {
-            navigateToParentDir()
+            if (!sidebarVisible) {
+                // 侧边栏未显示时，关闭最近打开的所有项
+                if (recentFilesManager.size() > 0) {
+                    DialogHelper.showConfirmDialog(
+                        context = this,
+                        title = "关闭所有最近文件",
+                        message = "确定要关闭所有最近打开的文件吗？",
+                        onConfirm = {
+                            recentFilesManager.clear()
+                            updateRecentFilesBar()
+                            Toast.makeText(this, "已关闭所有最近文件", Toast.LENGTH_SHORT).show()
+                        }
+                    )
+                } else {
+                    Toast.makeText(this, "没有最近打开的文件", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                // 侧边栏显示时，进入资源管理器设置（占位）
+                showExplorerSettingsDialog()
+            }
             true
         }
 
@@ -154,8 +188,15 @@ class WorkspaceActivity : Activity() {
             override fun afterTextChanged(s: Editable?) {
                 // 更新行号
                 updateLineNumbers()
+                // 更新字数统计
+                updateWordCount()
             }
         })
+
+        // 字数统计栏详情按钮
+        findViewById<ImageView>(R.id.btn_word_count_details)?.setOnClickListener {
+            showWordCountDetailsDialog()
+        }
     }
 
     private fun toggleSidebar() {
@@ -278,6 +319,8 @@ class WorkspaceActivity : Activity() {
                 updateRecentFilesBar()
                 // 刷新文件树以更新高亮状态
                 loadCurrentDir()
+                // 更新字数统计
+                updateWordCount()
             }
             .onFailure { e ->
                 Toast.makeText(this, "无法打开文件: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -377,6 +420,55 @@ class WorkspaceActivity : Activity() {
             context = this,
             title = "完整路径",
             message = fullPath
+        )
+    }
+
+    private fun showExplorerSettingsDialog() {
+        // 占位功能：显示资源管理器设置对话框
+        DialogHelper.showMessageDialog(
+            context = this,
+            title = "资源管理器设置",
+            message = "资源管理器设置功能即将推出"
+        )
+    }
+
+    private fun updateWordCount() {
+        val editorContent = findViewById<EditText>(R.id.editor_content)?.text.toString()
+        val wordCountBar = findViewById<LinearLayout>(R.id.word_count_bar)
+
+        if (editorManager.isFileOpen()) {
+            wordCountBar?.visibility = View.VISIBLE
+
+            val charCount = editorContent.length
+            val lineCount = editorContent.lines().size
+
+            findViewById<TextView>(R.id.tv_word_count)?.text = "$charCount 字符 | $lineCount 行"
+        } else {
+            wordCountBar?.visibility = View.GONE
+        }
+    }
+
+    private fun showWordCountDetailsDialog() {
+        val editorContent = findViewById<EditText>(R.id.editor_content)?.text.toString()
+        val lines = editorContent.lines()
+
+        val charCount = editorContent.length
+        val lineCount = lines.size
+        val wordCount = editorContent.split("\\s+".toRegex()).filter { it.isNotEmpty() }.size
+        val nonWhitespaceCount = editorContent.filter { !it.isWhitespace() }.length
+        val maxLineLength = lines.maxOfOrNull { it.length } ?: 0
+
+        val message = StringBuilder()
+        message.append("字符数（含空格）: $charCount\n")
+        message.append("字符数（不含空格）: $nonWhitespaceCount\n")
+        message.append("单词数: $wordCount\n")
+        message.append("行数: $lineCount\n")
+        message.append("最长行字符数: $maxLineLength")
+
+        DialogHelper.showMessageDialog(
+            context = this,
+            title = "字数统计详情",
+            message = message.toString()
         )
     }
 
@@ -543,6 +635,8 @@ class WorkspaceActivity : Activity() {
         updatePathDisplay()
         // 刷新文件树以移除高亮状态
         loadCurrentDir()
+        // 隐藏字数统计栏
+        findViewById<LinearLayout>(R.id.word_count_bar)?.visibility = View.GONE
     }
 
     
