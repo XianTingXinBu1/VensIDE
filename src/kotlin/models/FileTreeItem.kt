@@ -1,14 +1,13 @@
 package com.venside.x1n.models
 
+import android.os.Parcel
 import android.os.Parcelable
-import kotlinx.parcelize.Parcelize
 import java.io.File
 
 /**
  * 文件树项数据模型
  * 表示文件树中的一个文件或文件夹
  */
-@Parcelize
 data class FileTreeItem(
     val filePath: String,
     val name: String,
@@ -74,5 +73,37 @@ data class FileTreeItem(
                 lastModified = parentFile.lastModified()
             )
         }
+
+        /**
+         * Parcelable Creator
+         */
+        @JvmField
+        val CREATOR = object : Parcelable.Creator<FileTreeItem> {
+            override fun createFromParcel(parcel: Parcel): FileTreeItem {
+                return FileTreeItem(
+                    filePath = parcel.readString() ?: "",
+                    name = parcel.readString() ?: "",
+                    isDirectory = parcel.readByte() != 0.toByte(),
+                    size = parcel.readLong(),
+                    lastModified = parcel.readLong()
+                )
+            }
+
+            override fun newArray(size: Int): Array<FileTreeItem?> {
+                return arrayOfNulls(size)
+            }
+        }
+    }
+
+    override fun writeToParcel(parcel: Parcel, flags: Int) {
+        parcel.writeString(filePath)
+        parcel.writeString(name)
+        parcel.writeByte(if (isDirectory) 1 else 0)
+        parcel.writeLong(size)
+        parcel.writeLong(lastModified)
+    }
+
+    override fun describeContents(): Int {
+        return 0
     }
 }

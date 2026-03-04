@@ -27,26 +27,62 @@
         android:layout_marginLeft="4dp"
         android:layout_marginRight="8dp" />
 
-    <!-- 文件名 -->
-    <TextView
-        android:id="@+id/tv_file_name"
+    <!-- 文件信息容器 -->
+    <LinearLayout
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:text="filename"
-        android:textSize="14sp"
-        android:textColor="#CCCCCC"
-        android:singleLine="true"
-        android:ellipsize="end" />
+        android:orientation="vertical">
 
-    <!-- 文件大小 -->
-    <TextView
-        android:id="@+id/tv_file_size"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="0 B"
-        android:textSize="12sp"
-        android:textColor="#666666"
-        android:layout_marginLeft="8dp" />
+        <!-- 文件名 -->
+        <TextView
+            android:id="@+id/tv_file_name"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="filename"
+            android:textSize="14sp"
+            android:textColor="#CCCCCC"
+            android:singleLine="true"
+            android:ellipsize="end" />
+
+        <!-- 文件大小和修改时间 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="2dp">
+
+            <!-- 文件大小 -->
+            <TextView
+                android:id="@+id/tv_file_size"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="0 B"
+                android:textSize="11sp"
+                android:textColor="#666666" />
+
+            <!-- 分隔符 -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text=" • "
+                android:textSize="11sp"
+                android:textColor="#666666"
+                android:layout_marginLeft="4dp"
+                android:layout_marginRight="4dp" />
+
+            <!-- 修改时间 -->
+            <TextView
+                android:id="@+id/tv_file_modified"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="2024-01-01 12:00"
+                android:textSize="11sp"
+                android:textColor="#666666"
+                android:singleLine="true"
+                android:ellipsize="end" />
+        </LinearLayout>
+    </LinearLayout>
 
 </LinearLayout>

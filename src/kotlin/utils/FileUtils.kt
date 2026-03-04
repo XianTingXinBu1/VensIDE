@@ -17,7 +17,7 @@ object FileUtils {
     fun createFile(parent: File, name: String): Result<File> {
         val file = File(parent, name)
         return if (file.exists()) {
-            Result.failure(FileAlreadyExistsException("文件已存在: ${file.absolutePath}"))
+            Result.failure(FileAlreadyExistsException(file))
         } else {
             runCatching {
                 file.apply { createNewFile() }
@@ -34,7 +34,7 @@ object FileUtils {
     fun createFolder(parent: File, name: String): Result<File> {
         val folder = File(parent, name)
         return if (folder.exists()) {
-            Result.failure(FileAlreadyExistsException("文件夹已存在: ${folder.absolutePath}"))
+            Result.failure(FileAlreadyExistsException(folder))
         } else {
             if (folder.mkdirs()) {
                 Result.success(folder)
@@ -53,7 +53,7 @@ object FileUtils {
     fun renameFile(file: File, newName: String): Result<File> {
         val newFile = File(file.parentFile, newName)
         return if (newFile.exists()) {
-            Result.failure(FileAlreadyExistsException("目标已存在: ${newFile.absolutePath}"))
+            Result.failure(FileAlreadyExistsException(newFile))
         } else {
             if (file.renameTo(newFile)) {
                 Result.success(newFile)

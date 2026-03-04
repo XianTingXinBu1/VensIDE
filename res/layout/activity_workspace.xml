@@ -66,32 +66,6 @@
             android:contentDescription="返回" />
     </LinearLayout>
 
-    <!-- 最近文件顶栏 -->
-    <HorizontalScrollView
-        android:layout_width="match_parent"
-        android:layout_height="36dp"
-        android:background="#2D2D2D"
-        android:scrollbars="none">
-
-        <LinearLayout
-            android:id="@+id/recent_files_container"
-            android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingLeft="8dp"
-            android:paddingRight="8dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="最近打开: "
-                android:textSize="12sp"
-                android:textColor="#999999"
-                android:layout_marginRight="8dp" />
-        </LinearLayout>
-    </HorizontalScrollView>
-
     <!-- 主内容区域 -->
     <LinearLayout
         android:layout_width="match_parent"
@@ -174,72 +148,107 @@
             android:layout_height="match_parent"
             android:layout_weight="1"
             android:orientation="vertical"
-            android:background="#1E1E1E"
-            android:gravity="center">
+            android:background="#1E1E1E">
 
-            <!-- 空状态 -->
-            <TextView
-                android:id="@+id/empty_state"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="选择一个文件开始编辑"
-                android:textSize="16sp"
-                android:textColor="#666666"
-                android:visibility="visible" />
-
-            <!-- 编辑器内容 -->
-            <ScrollView
-                android:id="@+id/editor_scroll"
+            <!-- 最近文件顶栏 -->
+            <HorizontalScrollView
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:visibility="gone"
-                android:fillViewport="true">
+                android:layout_height="32dp"
+                android:background="#2D2D2D"
+                android:scrollbars="none">
 
-                <HorizontalScrollView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:scrollbars="horizontal">
+                <LinearLayout
+                    android:id="@+id/recent_files_container"
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingLeft="8dp"
+                    android:paddingRight="8dp">
 
-                    <LinearLayout
+                    <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:orientation="horizontal">
+                        android:text="最近打开: "
+                        android:textSize="11sp"
+                        android:textColor="#999999"
+                        android:layout_marginRight="8dp" />
+                </LinearLayout>
+            </HorizontalScrollView>
 
-                        <!-- 行号显示 -->
-                        <TextView
-                            android:id="@+id/line_numbers"
+            <!-- 编辑器内容区域 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <!-- 空状态 -->
+                <TextView
+                    android:id="@+id/empty_state"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="选择一个文件开始编辑"
+                    android:textSize="16sp"
+                    android:textColor="#666666"
+                    android:visibility="visible"
+                    android:layout_gravity="center"
+                    android:layout_marginTop="100dp" />
+
+                <!-- 编辑器内容 -->
+                <ScrollView
+                    android:id="@+id/editor_scroll"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:visibility="gone"
+                    android:fillViewport="true">
+
+                    <HorizontalScrollView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:scrollbars="horizontal">
+
+                        <LinearLayout
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:minWidth="50dp"
-                            android:background="#1E1E1E"
-                            android:textColor="#666666"
-                            android:textSize="14sp"
-                            android:fontFamily="monospace"
-                            android:paddingTop="16dp"
-                            android:paddingBottom="16dp"
-                            android:paddingLeft="16dp"
-                            android:paddingRight="8dp"
-                            android:gravity="top|end"
-                            android:text="1" />
+                            android:orientation="horizontal">
 
-                        <!-- 编辑器内容 -->
-                        <EditText
-                            android:id="@+id/editor_content"
-                            android:layout_width="wrap_content"
-                            android:minWidth="300dp"
-                            android:layout_height="wrap_content"
-                            android:minHeight="400dp"
-                            android:background="#1E1E1E"
-                            android:textColor="#CCCCCC"
-                            android:textSize="14sp"
-                            android:fontFamily="monospace"
-                            android:padding="16dp"
-                            android:gravity="top|start"
-                            android:inputType="textMultiLine"
-                            android:scrollbars="vertical" />
-                    </LinearLayout>
-                </HorizontalScrollView>
-            </ScrollView>
+                            <!-- 行号显示 -->
+                            <TextView
+                                android:id="@+id/line_numbers"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:minWidth="50dp"
+                                android:background="#1E1E1E"
+                                android:textColor="#666666"
+                                android:textSize="14sp"
+                                android:fontFamily="monospace"
+                                android:paddingTop="16dp"
+                                android:paddingBottom="16dp"
+                                android:paddingLeft="16dp"
+                                android:paddingRight="8dp"
+                                android:gravity="top|end"
+                                android:text="1" />
+
+                            <!-- 编辑器内容 -->
+                            <EditText
+                                android:id="@+id/editor_content"
+                                android:layout_width="wrap_content"
+                                android:minWidth="300dp"
+                                android:layout_height="wrap_content"
+                                android:minHeight="400dp"
+                                android:background="#1E1E1E"
+                                android:textColor="#CCCCCC"
+                                android:textSize="14sp"
+                                android:fontFamily="monospace"
+                                android:padding="16dp"
+                                android:gravity="top|start"
+                                android:inputType="textMultiLine"
+                                android:scrollbars="vertical" />
+                        </LinearLayout>
+                    </HorizontalScrollView>
+                </ScrollView>
+            </LinearLayout>
         </LinearLayout>
     </LinearLayout>
 

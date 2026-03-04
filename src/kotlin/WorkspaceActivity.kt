@@ -18,6 +18,7 @@ import android.widget.Toast
 import com.venside.x1n.managers.EditorManager
 import com.venside.x1n.managers.FileManager
 import com.venside.x1n.managers.RecentFilesManager
+import com.venside.x1n.managers.SymbolBarManager
 import com.venside.x1n.models.FileTreeItem
 import com.venside.x1n.utils.DialogHelper
 import com.venside.x1n.utils.FileUtils
@@ -33,6 +34,13 @@ class WorkspaceActivity : Activity() {
     private val fileManager = FileManager()
     private val editorManager = EditorManager()
     private val recentFilesManager = RecentFilesManager()
+    private val symbolBarManager: SymbolBarManager by lazy {
+        SymbolBarManager(
+            this,
+            onSymbolInsert = { symbol -> insertSymbol(symbol) },
+            shouldShow = { editorManager.isFileOpen() }
+        )
+    }
 
     private lateinit var fileTreeAdapter: FileTreeAdapter
     private var fileTree: MutableList<FileTreeItem> = mutableListOf()
@@ -43,6 +51,9 @@ class WorkspaceActivity : Activity() {
 
         workspacePath = intent.getStringExtra("workspace_path")
         fileManager.init(workspacePath ?: "/")
+
+        // 初始化符号栏管理器
+        symbolBarManager.init()
 
         setupUI()
         loadCurrentDir()
@@ -66,12 +77,22 @@ class WorkspaceActivity : Activity() {
 
         // 路径显示点击事件
         findViewById<TextView>(R.id.tv_workspace_path)?.setOnClickListener {
-            showFullPathDialog()
+            // 判断当前是否有打开的文件
+            if (editorManager.getCurrentFile() == null) {
+                // 没有打开文件，跳转到工作区管理页面
+                val intent = Intent(this, WorkspaceManagementActivity::class.java)
+                // 传递当前工作区路径，用于高亮显示
+                intent.putExtra("current_workspace_path", workspacePath)
+                startActivity(intent)
+            } else {
+                // 有打开文件，显示完整路径对话框
+                showFullPathDialog()
+            }
         }
 
         // 设置最近文件栏的拖拽事件监听器
         val recentFilesContainer = findViewById<LinearLayout>(R.id.recent_files_container)
-        recentFilesContainer?.setOnDragListener { view, event ->
+        recentFilesContainer?.setOnDragListener { _, event ->
             val draggedView = event.localState as? View ?: return@setOnDragListener false
 
             when (event.action) {
@@ -136,7 +157,7 @@ class WorkspaceActivity : Activity() {
             val item = fileTree[position]
             // 如果长按的是"..."项，直接返回工作区根目录
             if (item.name == "..") {
-                currentDir = rootDir
+                fileManager.navigateToRoot()
                 loadCurrentDir()
                 true
             } else {
@@ -166,7 +187,10 @@ class WorkspaceActivity : Activity() {
     private fun loadCurrentDir() {
         fileTree.clear()
         fileTree.addAll(fileManager.loadCurrentDir())
-        fileTreeAdapter.notifyDataSetChanged()
+        // 重新创建适配器，传入当前文件信息以实现高亮
+        fileTreeAdapter = FileTreeAdapter(this, fileTree, editorManager.getCurrentFile())
+        val fileTreeView = findViewById<ListView>(R.id.file_tree)
+        fileTreeView.adapter = fileTreeAdapter
         updatePathDisplay()
     }
 
@@ -237,22 +261,54 @@ class WorkspaceActivity : Activity() {
 
         // 添加最近文件标签
         for ((index, file) in recentFilesManager.getRecentFiles().withIndex()) {
+            // 创建扁平长方形按钮容器，固定宽度 240dp
             val fileLayout = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = android.view.Gravity.CENTER_VERTICAL
-                setPadding(4, 4, 4, 4)
-                val layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.MATCH_PARENT
-                )
-                layoutParams.setMargins(0, 0, 4, 0)
+                val layoutParams = LinearLayout.LayoutParams(240, LinearLayout.LayoutParams.MATCH_PARENT)
+                layoutParams.setMargins(0, 0, 8, 0)
                 this.layoutParams = layoutParams
             }
 
+            // 高亮指示器（左边框）
+            val indicator = android.view.View(this).apply {
+                val indLayoutParams = LinearLayout.LayoutParams(3, LinearLayout.LayoutParams.MATCH_PARENT)
+                this.layoutParams = indLayoutParams
+            }
+
+            // 文件名显示，使用权重布局，长文件名省略但保留后缀
             val fileTag = TextView(this).apply {
-                text = file.name
-                textSize = 13f
-                setPadding(16, 10, 4, 10)
+                // 处理文件名显示：保留后缀
+                val fileName = file.name
+                val extension = if (fileName.contains(".")) {
+                    fileName.substring(fileName.lastIndexOf("."))
+                } else {
+                    ""
+                }
+                val baseName = if (fileName.contains(".")) {
+                    fileName.substring(0, fileName.lastIndexOf("."))
+                } else {
+                    fileName
+                }
+
+                // 如果文件名过长，截取前面并保留后缀
+                text = if (fileName.length > 10) {
+                    val maxLength = 8 // 保留的字符数
+                    if (baseName.length > maxLength) {
+                        baseName.substring(0, maxLength) + "..." + extension
+                    } else {
+                        fileName
+                    }
+                } else {
+                    fileName
+                }
+                textSize = 12f
+                setPadding(8, 0, 0, 0)
+                setSingleLine(true)
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                // 使用权重布局，确保叉号有空间
+                val tagLayoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                this.layoutParams = tagLayoutParams
                 setOnClickListener {
                     // 点击标签切换文件
                     if (isContentModified()) {
@@ -282,56 +338,55 @@ class WorkspaceActivity : Activity() {
                 }
             }
 
-            // 高亮当前打开的文件
-            if (editorManager.isCurrentFile(file)) {
-                fileTag.setBackgroundColor(ThemeConstants.COLOR_TAG_BG_SELECTED)
-                fileTag.setTextColor(ThemeConstants.COLOR_TEXT_LIGHT)
-            } else {
-                fileTag.setBackgroundColor(ThemeConstants.COLOR_TAG_BG)
-                fileTag.setTextColor(ThemeConstants.COLOR_TEXT_NORMAL)
-            }
-
-            fileLayout.addView(fileTag)
-
-            // 添加删除按钮容器
-            val deleteBtnContainer = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = android.view.Gravity.CENTER
-                val layoutParams = LinearLayout.LayoutParams(
-                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
-                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT
-                )
-                layoutParams.setMargins(4, 0, 0, 0)
-                this.layoutParams = layoutParams
-            }
-
-            // 添加删除按钮
+            // 关闭按钮，固定宽度
             val deleteBtn = TextView(this).apply {
                 text = "×"
-                textSize = 14f
+                textSize = 16f
                 gravity = android.view.Gravity.CENTER
-                setPadding(6, 0, 6, 0)
+                setPadding(4, 0, 8, 0)
+                minWidth = 30
                 setOnClickListener {
+                    // 检查是否删除的是当前正在编辑的文件
+                    val isCurrentFile = editorManager.isCurrentFile(file)
                     // 从最近文件列表中删除
                     recentFilesManager.removeFileAt(index)
                     updateRecentFilesBar()
+                    // 如果删除的是当前文件，清空编辑器
+                    if (isCurrentFile) {
+                        clearEditor()
+                    }
                 }
             }
 
-            deleteBtnContainer.addView(deleteBtn)
-            fileLayout.addView(deleteBtnContainer)
+            // 高亮当前打开的文件
+            if (editorManager.isCurrentFile(file)) {
+                fileLayout.setBackgroundColor(ThemeConstants.COLOR_TAG_BG_SELECTED)
+                indicator.setBackgroundColor(0xFFFFFFFF.toInt()) // 白色指示器
+                fileTag.setTextColor(ThemeConstants.COLOR_TEXT_LIGHT)
+                deleteBtn.setTextColor(ThemeConstants.COLOR_TEXT_LIGHT)
+            } else {
+                fileLayout.setBackgroundColor(ThemeConstants.COLOR_TAG_BG)
+                indicator.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                fileTag.setTextColor(ThemeConstants.COLOR_TEXT_NORMAL)
+                deleteBtn.setTextColor(ThemeConstants.COLOR_TEXT_NORMAL)
+            }
+
+            fileLayout.addView(indicator)
+            fileLayout.addView(fileTag)
+            fileLayout.addView(deleteBtn)
             container.addView(fileLayout)
         }
     }
 
+    @Suppress("UNUSED_PARAMETER")
     private fun startDrag(view: View, fromIndex: Int) {
         view.alpha = ThemeConstants.DRAG_ALPHA
 
         // 创建拖拽阴影
         val shadowBuilder = android.view.View.DragShadowBuilder(view)
 
-        // 开始拖拽
-        view.startDrag(null, shadowBuilder, view, 0)
+        // 开始拖拽（使用新的 API）
+        view.startDragAndDrop(null, shadowBuilder, view, 0)
     }
 
     private fun findChildAt(container: LinearLayout, x: Float, y: Float): View? {
@@ -372,6 +427,8 @@ class WorkspaceActivity : Activity() {
                 updateLineNumbers()
                 // 更新最近文件顶栏
                 updateRecentFilesBar()
+                // 刷新文件树以更新高亮状态
+                loadCurrentDir()
             }
             .onFailure { e ->
                 Toast.makeText(this, "无法打开文件: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -451,36 +508,27 @@ class WorkspaceActivity : Activity() {
     }
 
     private fun showNewOptionsDialog() {
-        DialogHelper.showInputDialog(
+        DialogHelper.showNewFileDialog(
             context = this,
             title = "新建",
-            hint = "输入名称"
-        ) { name ->
-            showNewTypeDialog(name)
-        }
-    }
-
-    private fun showNewTypeDialog(name: String) {
-        val options = arrayOf("新建文件", "新建文件夹")
-        DialogHelper.showOptionsDialog(
-            context = this,
-            title = "选择类型",
-            options = options
-        ) { which ->
-            when (which) {
-                0 -> createFile(name)
-                1 -> createFolder(name)
+            hint = "输入名称",
+            onCreateFile = { fileName ->
+                createFile(fileName)
+            },
+            onCreateFolder = { folderName ->
+                createFolder(folderName)
             }
-        }
+        )
     }
 
     private fun showFullPathDialog() {
-        val fullPath = currentFile?.absolutePath ?: rootDir?.absolutePath ?: "/workspace"
-        AlertDialog.Builder(this)
-            .setTitle("完整路径")
-            .setMessage(fullPath)
-            .setPositiveButton("确定", null)
-            .show()
+        val currentFile = editorManager.getCurrentFile()
+        val fullPath = currentFile?.absolutePath ?: fileManager.getRootDir()?.absolutePath ?: "/workspace"
+        DialogHelper.showMessageDialog(
+            context = this,
+            title = "完整路径",
+            message = fullPath
+        )
     }
 
     private fun createFile(fileName: String) {
@@ -625,12 +673,48 @@ class WorkspaceActivity : Activity() {
         lineNumbers.text = lineNumbersText.toString()
     }
 
+    /**
+     * 插入符号到编辑器
+     * @param symbol 要插入的符号
+     */
+    private fun insertSymbol(symbol: String) {
+        val editorContent = findViewById<EditText>(R.id.editor_content) ?: return
+
+        val start = editorContent.selectionStart
+        val end = editorContent.selectionEnd
+
+        if (start >= 0 && end >= 0) {
+            val editable = editorContent.editableText
+            editable.replace(start, end, symbol)
+
+            // 更新行号
+            updateLineNumbers()
+        }
+    }
+
+    private fun clearEditor() {
+        editorManager.closeFile()
+        val emptyState = findViewById<TextView>(R.id.empty_state)
+        val editorScroll = findViewById<android.widget.ScrollView>(R.id.editor_scroll)
+        val editorContent = findViewById<EditText>(R.id.editor_content)
+        val lineNumbers = findViewById<TextView>(R.id.line_numbers)
+
+        emptyState?.visibility = View.VISIBLE
+        editorScroll?.visibility = View.GONE
+        editorContent?.text?.clear()
+        lineNumbers?.text = ""
+        updatePathDisplay()
+        // 刷新文件树以移除高亮状态
+        loadCurrentDir()
+    }
+
     
 
     // 文件树适配器
     private class FileTreeAdapter(
         context: Activity,
-        private val items: List<FileTreeItem>
+        private val items: List<FileTreeItem>,
+        private val currentFile: File? = null
     ) : ArrayAdapter<FileTreeItem>(context, R.layout.item_file_tree, items) {
 
         override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
@@ -643,6 +727,7 @@ class WorkspaceActivity : Activity() {
             val fileIcon = view.findViewById<ImageView>(R.id.iv_file_icon)
             val fileName = view.findViewById<TextView>(R.id.tv_file_name)
             val fileSize = view.findViewById<TextView>(R.id.tv_file_size)
+            val fileModified = view.findViewById<TextView>(R.id.tv_file_modified)
 
             // 设置图标
             if (item.isDirectory) {
@@ -651,7 +736,9 @@ class WorkspaceActivity : Activity() {
                 expandIndicator?.setImageResource(android.R.drawable.ic_menu_add)
                 expandIndicator?.rotation = 0f
                 fileIcon?.visibility = View.GONE
-                fileSize?.visibility = View.GONE
+                fileSize?.visibility = View.VISIBLE
+                fileSize?.text = "${item.name}/"
+                fileModified?.visibility = View.VISIBLE
             } else {
                 // 文件使用文件图标
                 expandIndicator?.visibility = View.GONE
@@ -659,11 +746,34 @@ class WorkspaceActivity : Activity() {
                 fileIcon?.setImageResource(android.R.drawable.ic_menu_info_details)
                 fileSize?.visibility = View.VISIBLE
                 fileSize?.text = FileUtils.formatFileSize(item.size)
+                fileModified?.visibility = View.VISIBLE
             }
 
             // 设置文件名
             fileName?.text = item.name
             fileName?.setTextColor(ThemeConstants.COLOR_TEXT_NORMAL)
+
+            // 设置修改时间
+            if (item.lastModified > 0) {
+                val formatter = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault())
+                fileModified?.text = formatter.format(java.util.Date(item.lastModified))
+            } else {
+                fileModified?.text = ""
+            }
+
+            // 检查是否是当前正在编辑的文件
+            if (!item.isDirectory && currentFile != null && item.filePath == currentFile.absolutePath) {
+                // 高亮当前文件
+                view.setBackgroundColor(ThemeConstants.COLOR_TAG_BG_SELECTED)
+                fileName?.setTextColor(ThemeConstants.COLOR_TEXT_LIGHT)
+                fileSize?.setTextColor(ThemeConstants.COLOR_TEXT_LIGHT)
+                fileModified?.setTextColor(ThemeConstants.COLOR_TEXT_LIGHT)
+            } else {
+                view.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                fileName?.setTextColor(ThemeConstants.COLOR_TEXT_NORMAL)
+                fileSize?.setTextColor(ThemeConstants.COLOR_TEXT_NORMAL)
+                fileModified?.setTextColor(ThemeConstants.COLOR_TEXT_NORMAL)
+            }
 
             // 清除缩进
             view.setPadding(8, view.paddingTop, view.paddingRight, view.paddingBottom)

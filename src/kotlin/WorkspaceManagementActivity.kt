@@ -1,6 +1,7 @@
 package com.venside.x1n
 
 import android.app.Activity
+import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -27,9 +28,12 @@ class WorkspaceManagementActivity : Activity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_workspace_management)
 
+        // 获取当前工作区路径（如果有的话）
+        val currentWorkspacePath = intent.getStringExtra("current_workspace_path")
+
         initVensIDEDirectory()
         setupUI()
-        loadWorkspaces()
+        loadWorkspaces(currentWorkspacePath)
     }
 
     private fun initVensIDEDirectory() {
@@ -54,7 +58,7 @@ class WorkspaceManagementActivity : Activity() {
         }
     }
 
-    private fun loadWorkspaces() {
+    private fun loadWorkspaces(currentWorkspacePath: String? = null) {
         workspaceList.clear()
         vensIDEBaseDir?.listFiles()?.let { files ->
             for (file in files) {
@@ -67,7 +71,8 @@ class WorkspaceManagementActivity : Activity() {
         workspaceList.sortByDescending { it.lastModified() }
 
         val listView = findViewById<ListView>(R.id.workspace_list)
-        workspaceAdapter = WorkspaceAdapter(this, workspaceList)
+        val currentWorkspaceFile = currentWorkspacePath?.let { File(it) }
+        workspaceAdapter = WorkspaceAdapter(this, workspaceList, currentWorkspaceFile)
         listView.adapter = workspaceAdapter
 
         // 长按显示菜单
@@ -205,7 +210,8 @@ class WorkspaceManagementActivity : Activity() {
     // 工作区适配器
     private class WorkspaceAdapter(
         context: Activity,
-        private val workspaces: List<File>
+        private val workspaces: List<File>,
+        private val currentWorkspace: File? = null
     ) : ArrayAdapter<File>(context, R.layout.item_workspace, workspaces) {
 
         override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
@@ -214,12 +220,28 @@ class WorkspaceManagementActivity : Activity() {
 
             val workspace = workspaces[position]
 
-            view.findViewById<TextView>(R.id.tv_workspace_name)?.text = workspace.name
+            val workspaceName = view.findViewById<TextView>(R.id.tv_workspace_name)
+            val workspaceDate = view.findViewById<TextView>(R.id.tv_workspace_date)
+
+            workspaceName?.text = workspace.name
 
             // 显示创建时间
             val lastModified = java.util.Date(workspace.lastModified())
             val formatter = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault())
-            view.findViewById<TextView>(R.id.tv_workspace_date)?.text = formatter.format(lastModified)
+            workspaceDate?.text = formatter.format(lastModified)
+
+            // 高亮显示当前工作区
+            if (currentWorkspace != null && workspace.absolutePath == currentWorkspace.absolutePath) {
+                view.setBackgroundColor(android.graphics.Color.parseColor("#3A3D3D"))
+                workspaceName?.setTextColor(0xFFFFFFFF.toInt())
+                workspaceName?.setTypeface(null, android.graphics.Typeface.BOLD)
+                workspaceDate?.setTextColor(0xFFCCCCCC.toInt())
+            } else {
+                view.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                workspaceName?.setTextColor(0xFFCCCCCC.toInt())
+                workspaceName?.setTypeface(null, android.graphics.Typeface.NORMAL)
+                workspaceDate?.setTextColor(0xFF888888.toInt())
+            }
 
             return view
         }

@@ -66,6 +66,65 @@ object DialogHelper {
     }
 
     /**
+     * 显示新建文件对话框（带有命名输入和类型选择按钮）
+     * @param context 上下文
+     * @param title 对话框标题
+     * @param hint 输入框提示文字
+     * @param onCreateFile 创建文件回调，参数为文件名
+     * @param onCreateFolder 创建文件夹回调，参数为文件夹名
+     */
+    fun showNewFileDialog(
+        context: Context,
+        title: String,
+        hint: String,
+        onCreateFile: (String) -> Unit,
+        onCreateFolder: (String) -> Unit
+    ) {
+        val editText = EditText(context).apply {
+            this.hint = hint
+            setPadding(
+                ThemeConstants.PADDING_EDITTEXT,
+                ThemeConstants.PADDING_EDITTEXT_VERTICAL,
+                ThemeConstants.PADDING_EDITTEXT,
+                ThemeConstants.PADDING_EDITTEXT_VERTICAL
+            )
+        }
+
+        val layout = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(
+                ThemeConstants.PADDING_EDITTEXT,
+                ThemeConstants.PADDING_EDITTEXT + 10,
+                ThemeConstants.PADDING_EDITTEXT,
+                10
+            )
+            addView(editText)
+        }
+
+        AlertDialog.Builder(context)
+            .setTitle(title)
+            .setView(layout)
+            .setPositiveButton("文件") { _, _ ->
+                val input = editText.text.toString().trim()
+                if (input.isNotEmpty()) {
+                    onCreateFile(input)
+                } else {
+                    Toast.makeText(context, "请输入名称", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("文件夹") { _, _ ->
+                val input = editText.text.toString().trim()
+                if (input.isNotEmpty()) {
+                    onCreateFolder(input)
+                } else {
+                    Toast.makeText(context, "请输入名称", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNeutralButton("取消", null)
+            .show()
+    }
+
+    /**
      * 显示确认对话框
      * @param context 上下文
      * @param title 对话框标题
