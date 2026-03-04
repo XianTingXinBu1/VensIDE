@@ -197,4 +197,31 @@ object DialogHelper {
             }
             .show()
     }
+
+    /**
+     * 显示多选对话框
+     * @param context 上下文
+     * @param title 对话框标题
+     * @param items 选项列表
+     * @param checkedItems 选中状态列表
+     * @param onConfirm 确认回调，参数为选中状态的布尔数组
+     */
+    fun showMultiChoiceDialog(
+        context: Context,
+        title: String,
+        items: Array<String>,
+        checkedItems: BooleanArray,
+        onConfirm: (BooleanArray) -> Unit
+    ) {
+        AlertDialog.Builder(context)
+            .setTitle(title)
+            .setMultiChoiceItems(items, checkedItems) { _, which, isChecked ->
+                checkedItems[which] = isChecked
+            }
+            .setPositiveButton("确定") { _, _ ->
+                onConfirm(checkedItems)
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
 }

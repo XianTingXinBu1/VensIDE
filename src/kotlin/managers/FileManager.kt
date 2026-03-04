@@ -22,7 +22,7 @@ class FileManager {
     private var rootDir: File? = null
     private var currentDir: File? = null
     private val fileTree = mutableListOf<FileTreeItem>()
-    private var sortMode = SortMode.NAME_ASC
+    private var sortModes = listOf(SortMode.NAME_ASC)
 
     /**
      * 初始化文件管理器
@@ -34,18 +34,32 @@ class FileManager {
     }
 
     /**
-     * 设置排序模式
-     * @param mode 排序模式
+     * 设置排序模式列表（按优先级排序）
+     * @param modes 排序模式列表
      */
-    fun setSortMode(mode: SortMode) {
-        sortMode = mode
+    fun setSortModes(modes: List<SortMode>) {
+        sortModes = if (modes.isEmpty()) listOf(SortMode.NAME_ASC) else modes
     }
 
     /**
-     * 获取当前排序模式
+     * 获取当前排序模式列表
+     * @return 排序模式列表
+     */
+    fun getSortModes(): List<SortMode> = sortModes
+
+    /**
+     * 设置单个排序模式（兼容旧代码）
+     * @param mode 排序模式
+     */
+    fun setSortMode(mode: SortMode) {
+        sortModes = listOf(mode)
+    }
+
+    /**
+     * 获取当前排序模式（兼容旧代码）
      * @return 排序模式
      */
-    fun getSortMode(): SortMode = sortMode
+    fun getSortMode(): SortMode = sortModes.firstOrNull() ?: SortMode.NAME_ASC
 
     /**
      * 获取根目录
@@ -93,8 +107,8 @@ class FileManager {
             val sortedFiles = sortFiles(normalFiles)
 
             // 文件夹在前，文件在后
-            for (dir in sortedDirs) {
-                fileTree.add(FileTreeItem.fromFile(dir))
+            for (directory in sortedDirs) {
+                fileTree.add(FileTreeItem.fromFile(directory))
             }
             for (file in sortedFiles) {
                 fileTree.add(FileTreeItem.fromFile(file))
@@ -105,19 +119,28 @@ class FileManager {
     }
 
     /**
-     * 根据当前排序模式排序文件列表
+     * 根据当前排序模式列表排序文件列表
      * @param files 文件列表
      * @return 排序后的文件列表
      */
     private fun sortFiles(files: List<File>): List<File> {
-        return when (sortMode) {
-            SortMode.NAME_ASC -> files.sortedBy { it.name.lowercase() }
-            SortMode.NAME_DESC -> files.sortedByDescending { it.name.lowercase() }
-            SortMode.SIZE_ASC -> files.sortedBy { it.length() }
-            SortMode.SIZE_DESC -> files.sortedByDescending { it.length() }
-            SortMode.MODIFIED_ASC -> files.sortedBy { it.lastModified() }
-            SortMode.MODIFIED_DESC -> files.sortedByDescending { it.lastModified() }
+        if (sortModes.isEmpty()) return files
+
+        var sortedFiles = files
+
+        // 按照排序模式列表的顺序依次应用排序
+        for (mode in sortModes) {
+            sortedFiles = when (mode) {
+                SortMode.NAME_ASC -> sortedFiles.sortedBy { it.name.lowercase() }
+                SortMode.NAME_DESC -> sortedFiles.sortedByDescending { it.name.lowercase() }
+                SortMode.SIZE_ASC -> sortedFiles.sortedBy { it.length() }
+                SortMode.SIZE_DESC -> sortedFiles.sortedByDescending { it.length() }
+                SortMode.MODIFIED_ASC -> sortedFiles.sortedBy { it.lastModified() }
+                SortMode.MODIFIED_DESC -> sortedFiles.sortedByDescending { it.lastModified() }
+            }
         }
+
+        return sortedFiles
     }
 
     /**
