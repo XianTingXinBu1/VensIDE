@@ -100,21 +100,6 @@ class WorkspaceActivity : Activity() {
             saveCurrentFile()
         }
 
-        // 路径显示点击事件
-        findViewById<TextView>(R.id.tv_workspace_path)?.setOnClickListener {
-            // 判断当前是否有打开的文件
-            if (editorManager.getCurrentFile() == null) {
-                // 没有打开文件，跳转到工作区管理页面
-                val intent = Intent(this, WorkspaceManagementActivity::class.java)
-                // 传递当前工作区路径，用于高亮显示
-                intent.putExtra("current_workspace_path", workspacePath)
-                startActivity(intent)
-            } else {
-                // 有打开文件，显示完整路径对话框
-                showFullPathDialog()
-            }
-        }
-
         // 路径显示长按事件
         findViewById<TextView>(R.id.tv_workspace_path)?.setOnLongClickListener {
             val currentFile = editorManager.getCurrentFile()
@@ -196,8 +181,19 @@ class WorkspaceActivity : Activity() {
         // 文件树点击事件
         fileTreeView.setOnItemClickListener { _, _, position, _ ->
             val item = fileTree[position]
-            if (isSelectionMode && !item.isParentDir) {
-                fileTreeAdapter.toggleSelection(position)
+            if (isSelectionMode) {
+                if (item.isParentDir) {
+                    // 点击".."退出选择模式并导航
+                    exitSelectionMode()
+                    onFileTreeItemClick(item)
+                } else {
+                    // 切换选中状态
+                    val isSelected = fileTreeAdapter.toggleSelection(position)
+                    // 如果取消选择后没有任何选中项，退出选择模式
+                    if (!isSelected && !fileTreeAdapter.hasSelection()) {
+                        exitSelectionMode()
+                    }
+                }
             } else {
                 onFileTreeItemClick(item)
             }
@@ -211,31 +207,75 @@ class WorkspaceActivity : Activity() {
                 fileManager.navigateToRoot()
                 loadCurrentDir()
                 true
+            } else if (isSelectionMode) {
+                // 选择模式下显示批量操作菜单
+                showBatchOptionsDialog()
+                true
             } else {
-                if (isSelectionMode) {
-                    fileTreeAdapter.toggleSelection(position)
-                } else {
-                    showFileOptions(item)
-                }
+                // 非选择模式显示单个文件管理弹窗
+                showFileOptions(item)
                 true
             }
         }
 
-        // 文件树触摸事件（用于滑动选择）
-        fileTreeView.setOnTouchListener { _, event ->
-            slideSelectHelper.handleTouchEvent(
+        // 文件树触摸事件（用于水平滑动触发选择）
+        fileTreeView.setOnTouchListener { v, event ->
+            val handled = slideSelectHelper.handleTouchEvent(
                 fileTreeView,
                 event,
-                onSlideStart = {
-                    // 滑动开始时自动进入选择模式
+                onEnterSelection = {
+                    // 水平滑动触发选择模式
                     if (!isSelectionMode) {
                         isSelectionMode = true
                         fileTreeAdapter.setSelectionMode(true)
+                        Toast.makeText(this, "已进入选择模式", Toast.LENGTH_SHORT).show()
                     }
                 }
-            ) { startPos: Int, endPos: Int ->
-                // 处理滑动选择
-                handleSlideSelection(startPos, endPos)
+            ) { startPos: Int, endPos: Int, clearPrevious: Boolean, isDeselect: Boolean ->
+                // 处理区间选择
+                handleSlideSelection(startPos, endPos, clearPrevious, isDeselect)
+            }
+            // 如果正在选择模式中滑动，消费事件；否则让点击事件正常传递
+            handled
+        }
+
+        // 编辑器点击事件 - 点击编辑器区域退出选择模式
+        val editorScroll = findViewById<android.widget.ScrollView>(R.id.editor_scroll)
+        editorScroll?.setOnClickListener {
+            if (isSelectionMode) {
+                exitSelectionMode()
+            }
+        }
+        
+        // 编辑器区域点击事件 - 点击空白区域退出选择模式
+        val editorArea = findViewById<LinearLayout>(R.id.editor_area)
+        editorArea?.setOnClickListener {
+            if (isSelectionMode) {
+                exitSelectionMode()
+            }
+        }
+        
+        // 空状态点击事件 - 点击退出选择模式
+        val emptyState = findViewById<TextView>(R.id.empty_state)
+        emptyState?.setOnClickListener {
+            if (isSelectionMode) {
+                exitSelectionMode()
+            }
+        }
+        
+        // 顶部栏元素点击事件 - 退出选择模式
+        findViewById<TextView>(R.id.tv_workspace_path)?.setOnClickListener {
+            if (isSelectionMode) {
+                exitSelectionMode()
+            } else {
+                // 原有逻辑：判断当前是否有打开的文件
+                if (editorManager.getCurrentFile() == null) {
+                    val intent = Intent(this, WorkspaceManagementActivity::class.java)
+                    intent.putExtra("current_workspace_path", workspacePath)
+                    startActivity(intent)
+                } else {
+                    showFullPathDialog()
+                }
             }
         }
 
@@ -264,6 +304,10 @@ class WorkspaceActivity : Activity() {
         sidebar?.visibility = if (sidebarVisible) View.VISIBLE else View.GONE
         // 保存侧边栏状态到持久化设置
         preferencesManager.saveSidebarState(sidebarVisible)
+        // 关闭侧边栏时自动退出选择模式
+        if (!sidebarVisible && isSelectionMode) {
+            exitSelectionMode()
+        }
         // 更新字数统计栏的文字显示
         updateWordCount()
     }
@@ -487,131 +531,150 @@ class WorkspaceActivity : Activity() {
     }
 
     private fun showExplorerSettingsDialog() {
-        if (isSelectionMode) {
-            // 批量操作模式
-            val options = arrayOf("全选", "取消选择", "批量删除", "退出选择模式")
-            DialogHelper.showOptionsDialog(
-                context = this,
-                title = "批量操作",
-                options = options
-            ) { which ->
-                when (which) {
-                    0 -> selectAll()
-                    1 -> clearSelection()
-                    2 -> batchDelete()
-                    3 -> exitSelectionMode()
+        // 资源管理器设置模式 - 显示勾选式排序对话框
+        val sortOptions = arrayOf(
+            "名称 (A→Z)",
+            "名称 (Z→A)",
+            "大小 (小→大)",
+            "大小 (大→小)",
+            "时间 (旧→新)",
+            "时间 (新→旧)"
+        )
+        val sortModeList = listOf(
+            FileManager.SortMode.NAME_ASC,
+            FileManager.SortMode.NAME_DESC,
+            FileManager.SortMode.SIZE_ASC,
+            FileManager.SortMode.SIZE_DESC,
+            FileManager.SortMode.MODIFIED_ASC,
+            FileManager.SortMode.MODIFIED_DESC
+        )
+
+        // 获取当前选中的排序规则
+        val currentSortModes = fileManager.getSortModes()
+        val checkedItems = BooleanArray(sortModeList.size) { index ->
+            sortModeList[index] in currentSortModes
+        }
+
+        DialogHelper.showMultiChoiceDialog(
+            context = this,
+            title = "资源管理器排序设置",
+            items = sortOptions,
+            checkedItems = checkedItems
+        ) { selectedItems ->
+            // 根据选中顺序构建排序规则列表
+            val selectedModes = mutableListOf<FileManager.SortMode>()
+            for (i in selectedItems.indices) {
+                if (selectedItems[i]) {
+                    selectedModes.add(sortModeList[i])
                 }
             }
-        } else {
-            // 资源管理器设置模式 - 显示勾选式排序对话框
-            val sortOptions = arrayOf(
-                "名称 (A→Z)",
-                "名称 (Z→A)",
-                "大小 (小→大)",
-                "大小 (大→小)",
-                "时间 (旧→新)",
-                "时间 (新→旧)"
-            )
-            val sortModeList = listOf(
-                FileManager.SortMode.NAME_ASC,
-                FileManager.SortMode.NAME_DESC,
-                FileManager.SortMode.SIZE_ASC,
-                FileManager.SortMode.SIZE_DESC,
-                FileManager.SortMode.MODIFIED_ASC,
-                FileManager.SortMode.MODIFIED_DESC
-            )
 
-            // 获取当前选中的排序规则
-            val currentSortModes = fileManager.getSortModes()
-            val checkedItems = BooleanArray(sortModeList.size) { index ->
-                sortModeList[index] in currentSortModes
+            if (selectedModes.isEmpty()) {
+                // 如果没有选择任何排序规则，使用默认值
+                selectedModes.add(FileManager.SortMode.NAME_ASC)
             }
 
-            DialogHelper.showMultiChoiceDialog(
-                context = this,
-                title = "资源管理器排序设置",
-                items = sortOptions,
-                checkedItems = checkedItems
-            ) { selectedItems ->
-                // 根据选中顺序构建排序规则列表
-                val selectedModes = mutableListOf<FileManager.SortMode>()
-                for (i in selectedItems.indices) {
-                    if (selectedItems[i]) {
-                        selectedModes.add(sortModeList[i])
-                    }
+            // 应用新的排序规则
+            fileManager.setSortModes(selectedModes)
+            preferencesManager.saveSortModes(selectedModes)
+
+            // 构建排序规则显示名称
+            val modeNames = selectedModes.map { mode ->
+                when (mode) {
+                    FileManager.SortMode.NAME_ASC -> "名称 (A→Z)"
+                    FileManager.SortMode.NAME_DESC -> "名称 (Z→A)"
+                    FileManager.SortMode.SIZE_ASC -> "大小 (小→大)"
+                    FileManager.SortMode.SIZE_DESC -> "大小 (大→小)"
+                    FileManager.SortMode.MODIFIED_ASC -> "时间 (旧→新)"
+                    FileManager.SortMode.MODIFIED_DESC -> "时间 (新→旧)"
                 }
-
-                if (selectedModes.isEmpty()) {
-                    // 如果没有选择任何排序规则，使用默认值
-                    selectedModes.add(FileManager.SortMode.NAME_ASC)
-                }
-
-                // 应用新的排序规则
-                fileManager.setSortModes(selectedModes)
-                preferencesManager.saveSortModes(selectedModes)
-
-                // 构建排序规则显示名称
-                val modeNames = selectedModes.map { mode ->
-                    when (mode) {
-                        FileManager.SortMode.NAME_ASC -> "名称 (A→Z)"
-                        FileManager.SortMode.NAME_DESC -> "名称 (Z→A)"
-                        FileManager.SortMode.SIZE_ASC -> "大小 (小→大)"
-                        FileManager.SortMode.SIZE_DESC -> "大小 (大→小)"
-                        FileManager.SortMode.MODIFIED_ASC -> "时间 (旧→新)"
-                        FileManager.SortMode.MODIFIED_DESC -> "时间 (新→旧)"
-                    }
-                }
-
-                Toast.makeText(
-                    this,
-                    "已按 ${modeNames.joinToString(" + ")} 排序",
-                    Toast.LENGTH_SHORT
-                ).show()
-
-                // 重新加载文件树
-                loadCurrentDir()
             }
+
+            Toast.makeText(
+                this,
+                "已按 ${modeNames.joinToString(" + ")} 排序",
+                Toast.LENGTH_SHORT
+            ).show()
+
+            // 重新加载文件树
+            loadCurrentDir()
         }
     }
 
-    private fun enterSelectionMode() {
-        isSelectionMode = true
-        fileTreeAdapter.setSelectionMode(true)
-        Toast.makeText(this, "已进入批量选择模式，滑动文件进行选择", Toast.LENGTH_SHORT).show()
-    }
-
     /**
-     * 处理滑动选择
+     * 处理滑动选择（区间选择）
      * @param startPos 起始位置
      * @param endPos 结束位置
+     * @param clearPrevious 是否清除之前的选择
+     * @param isDeselect 是否是取消选择操作
      */
-    private fun handleSlideSelection(startPos: Int, endPos: Int) {
+    private fun handleSlideSelection(startPos: Int, endPos: Int, clearPrevious: Boolean, isDeselect: Boolean) {
+        // 如果是新选择操作，清除之前的选择
+        if (clearPrevious) {
+            fileTree.forEach { it.isSelected = false }
+        }
+
         // 确定起始和结束位置（处理方向）
         val actualStart = minOf(startPos, endPos)
         val actualEnd = maxOf(startPos, endPos)
 
-        // 清除所有选择
-        fileTree.forEach { it.isSelected = false }
-
-        // 选中从起始位置到结束位置的所有项（排除".."项）
-        for (i in actualStart..actualEnd) {
-            if (i in fileTree.indices) {
-                val item = fileTree[i]
-                if (!item.isParentDir) {
-                    item.isSelected = true
+        if (isDeselect) {
+            // 取消选择：取消选中区间内的所有项
+            for (i in actualStart..actualEnd) {
+                if (i in fileTree.indices) {
+                    val item = fileTree[i]
+                    if (!item.isParentDir) {
+                        item.isSelected = false
+                    }
+                }
+            }
+        } else {
+            // 正常选择：选中区间内的所有项
+            for (i in actualStart..actualEnd) {
+                if (i in fileTree.indices) {
+                    val item = fileTree[i]
+                    if (!item.isParentDir) {
+                        item.isSelected = true
+                    }
                 }
             }
         }
 
         // 通知适配器更新
         fileTreeAdapter.notifyDataSetChanged()
+        
+        // 检查是否还有选中项，没有则退出选择模式
+        if (!fileTreeAdapter.hasSelection()) {
+            exitSelectionMode()
+        }
     }
 
     private fun exitSelectionMode() {
         isSelectionMode = false
+        slideSelectHelper.exitSelectionMode()
         fileTreeAdapter.setSelectionMode(false)
         fileTreeAdapter.clearSelection()
         Toast.makeText(this, "已退出批量选择模式", Toast.LENGTH_SHORT).show()
+    }
+
+    /**
+     * 显示批量操作菜单
+     */
+    private fun showBatchOptionsDialog() {
+        val selectedCount = fileTreeAdapter.getSelectedItems().size
+        val options = arrayOf("全选", "取消选择", "删除选中 ($selectedCount)", "退出选择模式")
+        DialogHelper.showOptionsDialog(
+            context = this,
+            title = "批量操作",
+            options = options
+        ) { which ->
+            when (which) {
+                0 -> selectAll()
+                1 -> clearSelection()
+                2 -> batchDelete()
+                3 -> exitSelectionMode()
+            }
+        }
     }
 
     private fun selectAll() {
@@ -733,9 +796,9 @@ class WorkspaceActivity : Activity() {
 
     private fun showFileOptions(item: FileTreeItem) {
         val options = if (item.isDirectory) {
-            arrayOf("批量选择", "重命名", "删除")
+            arrayOf("重命名", "删除")
         } else {
-            arrayOf("打开", "批量选择", "重命名", "删除")
+            arrayOf("打开", "重命名", "删除")
         }
 
         DialogHelper.showOptionsDialog(
@@ -745,16 +808,14 @@ class WorkspaceActivity : Activity() {
         ) { which ->
             if (item.isDirectory) {
                 when (which) {
-                    0 -> enterSelectionMode()
-                    1 -> showRenameDialog(item)
-                    2 -> showDeleteDialog(item)
+                    0 -> showRenameDialog(item)
+                    1 -> showDeleteDialog(item)
                 }
             } else {
                 when (which) {
                     0 -> openFile(item.file)
-                    1 -> enterSelectionMode()
-                    2 -> showRenameDialog(item)
-                    3 -> showDeleteDialog(item)
+                    1 -> showRenameDialog(item)
+                    2 -> showDeleteDialog(item)
                 }
             }
         }

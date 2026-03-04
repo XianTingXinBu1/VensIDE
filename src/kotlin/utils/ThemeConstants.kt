@@ -23,6 +23,9 @@ object ThemeConstants {
     /** 标签背景色（选中） */
     const val COLOR_TAG_BG_SELECTED = 0xFF3399FF.toInt()
 
+    /** 选择状态背景色（比打开状态暗） */
+    const val COLOR_SELECTION_BG = 0xFF2266AA.toInt()
+
     /** 文字颜色 - 正常 */
     const val COLOR_TEXT_NORMAL = 0xFFCCCCCC.toInt()
 

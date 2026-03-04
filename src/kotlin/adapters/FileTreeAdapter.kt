@@ -5,7 +5,6 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
-import android.widget.CheckBox
 import android.widget.ImageView
 import android.widget.TextView
 import com.venside.x1n.R
@@ -28,9 +27,17 @@ class FileTreeAdapter(
 
     fun isSelectionMode(): Boolean = isSelectionMode
 
-    fun toggleSelection(position: Int) {
+    fun toggleSelection(position: Int): Boolean {
         items[position].isSelected = !items[position].isSelected
         notifyDataSetChanged()
+        return items[position].isSelected
+    }
+
+    /**
+     * 检查是否有选中的项
+     */
+    fun hasSelection(): Boolean {
+        return items.any { it.isSelected && !it.isParentDir }
     }
 
     fun getSelectedItems(): List<FileTreeItem> {
@@ -48,19 +55,11 @@ class FileTreeAdapter(
 
         val item = items[position]
 
-        val checkbox = view.findViewById<CheckBox>(R.id.checkbox_selected)
         val expandIndicator = view.findViewById<ImageView>(R.id.iv_expand_indicator)
         val fileIcon = view.findViewById<ImageView>(R.id.iv_file_icon)
         val fileName = view.findViewById<TextView>(R.id.tv_file_name)
         val fileSize = view.findViewById<TextView>(R.id.tv_file_size)
         val fileModified = view.findViewById<TextView>(R.id.tv_file_modified)
-
-        // 设置选中复选框
-        checkbox?.visibility = if (isSelectionMode && !item.isParentDir) View.VISIBLE else View.GONE
-        checkbox?.isChecked = item.isSelected
-        checkbox?.setOnCheckedChangeListener { _, isChecked ->
-            item.isSelected = isChecked
-        }
 
         // 设置图标（文件夹和文件统一大小）
         if (item.isDirectory) {
@@ -97,15 +96,15 @@ class FileTreeAdapter(
             fileModified?.text = ""
         }
 
-        // 检查是否是当前正在编辑的文件
-        if (!item.isDirectory && currentFile != null && item.filePath == currentFile.absolutePath) {
-            // 高亮当前文件
-            view.setBackgroundColor(ThemeConstants.COLOR_TAG_BG_SELECTED)
+        // 选择模式下，不显示打开文件的高亮（避免混淆），只显示选择高亮
+        if (item.isSelected) {
+            // 选择状态 - 暗蓝色
+            view.setBackgroundColor(ThemeConstants.COLOR_SELECTION_BG)
             fileName?.setTextColor(ThemeConstants.COLOR_TEXT_LIGHT)
             fileSize?.setTextColor(ThemeConstants.COLOR_TEXT_LIGHT)
             fileModified?.setTextColor(ThemeConstants.COLOR_TEXT_LIGHT)
-        } else if (item.isSelected) {
-            // 选中状态
+        } else if (!item.isDirectory && currentFile != null && item.filePath == currentFile.absolutePath && !isSelectionMode) {
+            // 打开状态 - 亮蓝色（仅在非选择模式下显示）
             view.setBackgroundColor(ThemeConstants.COLOR_TAG_BG_SELECTED)
             fileName?.setTextColor(ThemeConstants.COLOR_TEXT_LIGHT)
             fileSize?.setTextColor(ThemeConstants.COLOR_TEXT_LIGHT)
