@@ -325,7 +325,7 @@
     <LinearLayout
         android:id="@+id/terminal_panel"
         android:layout_width="match_parent"
-        android:layout_height="200dp"
+        android:layout_height="180dp"
         android:orientation="vertical"
         android:background="#1E1E1E"
         android:visibility="gone">
@@ -372,11 +372,14 @@
 
         <!-- 终端输出内容 -->
         <ScrollView
+            android:id="@+id/terminal_scroll"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
             android:fillViewport="true"
-            android:padding="8dp">
+            android:padding="8dp"
+            android:paddingBottom="280dp"
+            android:clipToPadding="false">
 
             <TextView
                 android:id="@+id/terminal_output"

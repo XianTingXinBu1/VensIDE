@@ -76,7 +76,7 @@ class WorkspaceActivity : Activity() {
         SymbolBarManager(
             this,
             onSymbolInsert = { symbol -> insertSymbol(symbol) },
-            shouldShow = { editorManager.isFileOpen() }
+            shouldShow = { editorManager.isFileOpen() && uiBindingManager.getTerminalPanel()?.visibility != android.view.View.VISIBLE }
         )
     }
     private val recentFilesBarManager: RecentFilesBarManager by lazy {
@@ -785,7 +785,6 @@ class WorkspaceActivity : Activity() {
 
     private fun showTerminal() {
         uiBindingManager.getTerminalPanel()?.visibility = android.view.View.VISIBLE
-        uiBindingManager.getTerminalOutput()?.requestFocus()
     }
 
     private fun hideTerminal() {
@@ -823,7 +822,7 @@ class WorkspaceActivity : Activity() {
             (terminalOutput.parent as? android.widget.ScrollView)?.fullScroll(android.widget.ScrollView.FOCUS_DOWN)
         }
     }
-}
+    }
 
     // ==================== 返回键处理 ====================
 
