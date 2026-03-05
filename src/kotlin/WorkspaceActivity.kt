@@ -5,8 +5,11 @@ import android.content.ClipData
 import android.content.Intent
 import android.os.Bundle
 import android.view.MotionEvent
+import android.widget.PopupMenu
 import android.widget.Toast
 import com.venside.x1n.adapters.FileTreeAdapter
+import com.venside.x1n.lua.LuaEngine
+import com.venside.x1n.lua.LuaException
 import com.venside.x1n.managers.BackPressHandler
 import com.venside.x1n.managers.DialogCoordinator
 import com.venside.x1n.managers.EditorManager
@@ -46,6 +49,7 @@ class WorkspaceActivity : Activity() {
     private val undoRedoManager = UndoRedoManager()
     private val recentFilesManager = RecentFilesManager()
     private val preferencesManager: PreferencesManager by lazy { PreferencesManager(this) }
+    private val luaEngine: LuaEngine by lazy { LuaEngine() }
 
     // 解耦后的管理器（通过接口类型注入）
     private val uiBindingManager: IUIBindingManager by lazy { UIBindingManager(this) }
@@ -87,6 +91,9 @@ class WorkspaceActivity : Activity() {
     private lateinit var fileTreeAdapter: FileTreeAdapter
     private var fileTree: MutableList<FileTreeItem> = mutableListOf()
 
+    // 终端历史记录
+    private val terminalHistory = mutableListOf<String>()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_workspace)
@@ -113,10 +120,29 @@ class WorkspaceActivity : Activity() {
             onLongPress = { handleSidebarLongPress() }
         )
 
-        uiBindingManager.bindNavigationButtons(
-            onBack = { handleBackPress() },
-            onSave = { saveCurrentFile() }
-        )
+        uiBindingManager.bindRunButton { runLuaFile() }
+
+        uiBindingManager.bindMenuButton {
+            val menuButton = uiBindingManager.getMenuButton()
+            if (menuButton != null) {
+                val popup = PopupMenu(this, menuButton)
+                popup.menuInflater.inflate(R.menu.main_menu, popup.menu)
+                popup.setOnMenuItemClickListener { item ->
+                    when (item.itemId) {
+                        R.id.menu_save -> {
+                            saveCurrentFile()
+                            true
+                        }
+                        R.id.menu_terminal -> {
+                            toggleTerminal()
+                            true
+                        }
+                        else -> false
+                    }
+                }
+                popup.show()
+            }
+        }
 
         uiBindingManager.bindUndoRedoButtons(
             onUndo = { performUndo() },
@@ -152,9 +178,26 @@ class WorkspaceActivity : Activity() {
             onTextChanged = { start, before, count -> recordTextChange(start, before, count) }
         )
 
+        // 监听编辑器焦点变化，动态显示/隐藏撤销/重做按钮
+        uiBindingManager.getEditorContent()?.setOnFocusChangeListener { _, hasFocus ->
+            if (hasFocus && editorManager.isFileOpen()) {
+                uiBindingManager.showUndoRedoBar()
+            } else {
+                uiBindingManager.hideUndoRedoBar()
+            }
+        }
+
         uiBindingManager.bindWordCountButton {
             val content = uiBindingManager.getEditorContent()?.text.toString()
             dialogCoordinator.showWordCountDetailsDialog(this, content)
+        }
+
+        // 绑定终端按钮
+        uiBindingManager.getTerminalPanel()?.findViewById<android.widget.ImageView>(R.id.btn_clear_terminal)?.setOnClickListener {
+            clearTerminal()
+        }
+        uiBindingManager.getTerminalPanel()?.findViewById<android.widget.ImageView>(R.id.btn_hide_terminal)?.setOnClickListener {
+            hideTerminal()
         }
     }
 
@@ -370,6 +413,91 @@ class WorkspaceActivity : Activity() {
 
     private fun showError(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+    }
+
+    // ==================== Lua 执行操作 ====================
+
+    private fun runLuaFile() {
+        val currentFile = editorManager.getCurrentFile()
+        
+        if (currentFile == null) {
+            Toast.makeText(this, "请先打开一个 Lua 文件", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        if (!currentFile.name.endsWith(".lua", ignoreCase = true)) {
+            Toast.makeText(this, "当前文件不是 Lua 文件", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        // 先保存文件
+        val content = uiBindingManager.getEditorContent()?.text.toString() ?: ""
+        val hasUnsavedChanges = backPressHandler.isContentModified(content)
+        
+        if (hasUnsavedChanges) {
+            DialogHelper.showConfirmDialog(
+                context = this,
+                title = "未保存的更改",
+                message = "执行前需要保存文件，是否保存？",
+                positiveText = "保存并执行",
+                negativeText = "取消",
+                onConfirm = {
+                    saveCurrentFile()
+                    executeLuaFile(currentFile)
+                }
+            )
+        } else {
+            executeLuaFile(currentFile)
+        }
+    }
+
+    private fun executeLuaFile(file: File) {
+    // 显示终端
+    showTerminal()
+    // 添加分隔线，区分不同的执行记录
+    if (terminalHistory.isNotEmpty()) {
+        appendTerminalOutput("══════════════════════════════════", isError = false)
+    }
+    appendTerminalOutput("正在执行: ${file.name}")
+
+    try {
+        val result = luaEngine.executeFile(file)
+
+        if (result.isSuccess) {
+            // 先显示print输出（如果有）
+            if (result.output.isNotEmpty()) {
+                appendTerminalOutput("输出:", isError = false)
+                // 按行显示print输出
+                result.output.lines().forEach { line ->
+                    if (line.isNotBlank()) {
+                        appendTerminalOutput(line, isError = false)
+                    }
+                }
+            }
+
+            // 再显示返回值（如果有）
+            if (result.returnValue.isNotEmpty()) {
+                appendTerminalOutput("返回值: ${result.returnValue}", isError = false)
+            }
+
+            appendTerminalOutput("执行成功", isError = false)
+        } else {
+            val errorMsg = "执行失败\n错误: ${result.message}\n行号: ${result.lineNumber}"
+            appendTerminalOutput(errorMsg, isError = true)
+        }
+    } catch (e: LuaException) {
+        appendTerminalOutput("执行异常: ${e.message ?: "未知错误"}", isError = true)
+    } catch (e: Exception) {
+        appendTerminalOutput("执行异常: ${e.message ?: "未知错误"}", isError = true)
+    }
+}
+
+    private fun showLuaResultDialog(title: String, message: String) {
+        DialogHelper.showMessageDialog(
+            context = this,
+            title = title,
+            message = message
+        )
     }
 
     // ==================== 选择模式操作 ====================
@@ -641,6 +769,61 @@ class WorkspaceActivity : Activity() {
         updatePathDisplay()
         loadCurrentDir()
     }
+
+    // ==================== 终端操作 ====================
+
+    private fun toggleTerminal() {
+        val terminalPanel = uiBindingManager.getTerminalPanel()
+        if (terminalPanel != null) {
+            if (terminalPanel.visibility == android.view.View.GONE) {
+                showTerminal()
+            } else {
+                hideTerminal()
+            }
+        }
+    }
+
+    private fun showTerminal() {
+        uiBindingManager.getTerminalPanel()?.visibility = android.view.View.VISIBLE
+        uiBindingManager.getTerminalOutput()?.requestFocus()
+    }
+
+    private fun hideTerminal() {
+        uiBindingManager.getTerminalPanel()?.visibility = android.view.View.GONE
+    }
+
+    private fun clearTerminal(clearHistory: Boolean = true) {
+    if (clearHistory) {
+        terminalHistory.clear()
+    }
+    if (terminalHistory.isEmpty()) {
+        uiBindingManager.getTerminalOutput()?.text = "等待执行..."
+    } else {
+        uiBindingManager.getTerminalOutput()?.text = terminalHistory.joinToString("\n")
+    }
+}
+
+    private fun appendTerminalOutput(text: String, isError: Boolean = false) {
+    val terminalOutput = uiBindingManager.getTerminalOutput()
+    if (terminalOutput != null) {
+        val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+        val newText = "[$timestamp] $text"
+
+        // 添加到历史记录
+        terminalHistory.add(newText)
+
+        // 更新显示
+        terminalOutput.text = terminalHistory.joinToString("\n")
+        terminalOutput.setTextColor(
+            if (isError) 0xFFFF5252.toInt() else 0xFF4CAF50.toInt()
+        )
+
+        // 自动滚动到底部
+        (terminalOutput.parent as? android.widget.ScrollView)?.post {
+            (terminalOutput.parent as? android.widget.ScrollView)?.fullScroll(android.widget.ScrollView.FOCUS_DOWN)
+        }
+    }
+}
 
     // ==================== 返回键处理 ====================
 

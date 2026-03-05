@@ -33,15 +33,17 @@ class UIBindingManager(
         }
     }
 
-    override fun bindNavigationButtons(onBack: () -> Unit, onSave: () -> Unit) {
-        activity.findViewById<ImageView>(R.id.btn_back)?.setOnClickListener {
-            onBack()
-        }
-
-        activity.findViewById<ImageView>(R.id.btn_save)?.setOnClickListener {
-            onSave()
-        }
+    override fun bindRunButton(onRun: () -> Unit) {
+    activity.findViewById<ImageView>(R.id.btn_run)?.setOnClickListener {
+        onRun()
     }
+}
+
+override fun bindMenuButton(onClick: () -> Unit) {
+    activity.findViewById<ImageView>(R.id.btn_menu)?.setOnClickListener {
+        onClick()
+    }
+}
 
     override fun bindUndoRedoButtons(onUndo: () -> Unit, onRedo: () -> Unit) {
         activity.findViewById<ImageView>(R.id.btn_undo)?.setOnClickListener {
@@ -166,10 +168,18 @@ class UIBindingManager(
     }
 
     override fun bindWordCountButton(onClick: () -> Unit) {
-        activity.findViewById<ImageView>(R.id.btn_word_count_details)?.setOnClickListener {
-            onClick()
-        }
+    activity.findViewById<ImageView>(R.id.btn_word_count_details)?.setOnClickListener {
+        onClick()
     }
+}
+
+override fun showUndoRedoBar() {
+    activity.findViewById<LinearLayout>(R.id.undo_redo_bar)?.visibility = View.VISIBLE
+}
+
+override fun hideUndoRedoBar() {
+    activity.findViewById<LinearLayout>(R.id.undo_redo_bar)?.visibility = View.GONE
+}
 
     override fun getEditorContent(): EditText? = activity.findViewById(R.id.editor_content)
 
@@ -196,4 +206,10 @@ class UIBindingManager(
     override fun getUndoButton(): ImageView? = activity.findViewById(R.id.btn_undo)
 
     override fun getRedoButton(): ImageView? = activity.findViewById(R.id.btn_redo)
+
+    override fun getTerminalPanel(): android.widget.LinearLayout? = activity.findViewById(R.id.terminal_panel)
+
+    override fun getTerminalOutput(): TextView? = activity.findViewById(R.id.terminal_output)
+
+    override fun getMenuButton(): android.widget.ImageView? = activity.findViewById(R.id.btn_menu)
 }

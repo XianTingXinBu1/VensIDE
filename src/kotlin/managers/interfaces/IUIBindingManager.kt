@@ -20,11 +20,16 @@ interface IUIBindingManager {
     fun bindSidebarToggle(onToggle: () -> Unit, onLongPress: () -> Unit)
     
     /**
-     * 绑定导航按钮
-     * @param onBack 返回回调
-     * @param onSave 保存回调
+     * 绑定运行按钮
+     * @param onRun 执行回调
      */
-    fun bindNavigationButtons(onBack: () -> Unit, onSave: () -> Unit)
+    fun bindRunButton(onRun: () -> Unit)
+
+    /**
+     * 绑定菜单按钮
+     * @param onClick 点击回调
+     */
+    fun bindMenuButton(onClick: () -> Unit)
     
     /**
      * 绑定撤销/重做按钮
@@ -81,6 +86,16 @@ interface IUIBindingManager {
      * @param onClick 点击回调
      */
     fun bindWordCountButton(onClick: () -> Unit)
+
+    /**
+     * 显示撤销/重做按钮栏
+     */
+    fun showUndoRedoBar()
+
+    /**
+     * 隐藏撤销/重做按钮栏
+     */
+    fun hideUndoRedoBar()
     
     /**
      * 获取编辑器内容控件
@@ -146,4 +161,19 @@ interface IUIBindingManager {
      * 获取重做按钮
      */
     fun getRedoButton(): android.widget.ImageView?
+    
+    /**
+     * 获取终端面板
+     */
+    fun getTerminalPanel(): android.widget.LinearLayout?
+    
+    /**
+     * 获取终端输出视图
+     */
+    fun getTerminalOutput(): TextView?
+
+    /**
+     * 获取菜单按钮
+     */
+    fun getMenuButton(): android.widget.ImageView?
 }

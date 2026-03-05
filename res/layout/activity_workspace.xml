@@ -19,11 +19,11 @@
         <!-- 侧边栏切换按钮 -->
         <ImageView
             android:id="@+id/btn_toggle_sidebar"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
             android:src="@android:drawable/ic_menu_sort_by_size"
             android:tint="#CCCCCC"
-            android:padding="8dp"
+            android:padding="6dp"
             android:background="?android:attr/selectableItemBackgroundBorderless"
             android:contentDescription="切换侧边栏" />
 
@@ -43,51 +43,27 @@
             android:padding="4dp"
             android:background="#1E1E1E" />
 
-        <!-- 撤销按钮 -->
+        <!-- 执行按钮 -->
         <ImageView
-            android:id="@+id/btn_undo"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:src="@android:drawable/ic_menu_close_clear_cancel"
-            android:tint="#666666"
-            android:padding="8dp"
+            android:id="@+id/btn_run"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:src="@android:drawable/ic_media_play"
+            android:tint="#4CAF50"
+            android:padding="6dp"
             android:background="?android:attr/selectableItemBackgroundBorderless"
-            android:contentDescription="撤销"
-            android:enabled="false" />
+            android:contentDescription="执行" />
 
-        <!-- 重做按钮 -->
+        <!-- 菜单按钮 -->
         <ImageView
-            android:id="@+id/btn_redo"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:src="@android:drawable/ic_menu_rotate"
-            android:tint="#666666"
-            android:padding="8dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
-            android:contentDescription="重做"
-            android:enabled="false" />
-
-        <!-- 保存按钮 -->
-        <ImageView
-            android:id="@+id/btn_save"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:src="@android:drawable/ic_menu_save"
+            android:id="@+id/btn_menu"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:src="@android:drawable/ic_menu_more"
             android:tint="#CCCCCC"
-            android:padding="8dp"
+            android:padding="6dp"
             android:background="?android:attr/selectableItemBackgroundBorderless"
-            android:contentDescription="保存" />
-
-        <!-- 返回按钮 -->
-        <ImageView
-            android:id="@+id/btn_back"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:src="@android:drawable/ic_menu_revert"
-            android:tint="#CCCCCC"
-            android:padding="8dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
-            android:contentDescription="返回" />
+            android:contentDescription="菜单" />
     </LinearLayout>
 
     <!-- 主内容区域 -->
@@ -207,6 +183,43 @@
                 android:layout_weight="1"
                 android:orientation="vertical">
 
+                <!-- 撤销/重做按钮栏（动态显示） -->
+                <LinearLayout
+                    android:id="@+id/undo_redo_bar"
+                    android:layout_width="match_parent"
+                    android:layout_height="40dp"
+                    android:orientation="horizontal"
+                    android:gravity="end|center_vertical"
+                    android:background="#2D2D2D"
+                    android:paddingLeft="8dp"
+                    android:paddingRight="8dp"
+                    android:visibility="gone">
+
+                    <!-- 撤销按钮 -->
+                    <ImageView
+                        android:id="@+id/btn_undo"
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:src="@android:drawable/ic_menu_close_clear_cancel"
+                        android:tint="#666666"
+                        android:padding="6dp"
+                        android:background="?android:attr/selectableItemBackgroundBorderless"
+                        android:contentDescription="撤销"
+                        android:enabled="false" />
+
+                    <!-- 重做按钮 -->
+                    <ImageView
+                        android:id="@+id/btn_redo"
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:src="@android:drawable/ic_menu_rotate"
+                        android:tint="#666666"
+                        android:padding="6dp"
+                        android:background="?android:attr/selectableItemBackgroundBorderless"
+                        android:contentDescription="重做"
+                        android:enabled="false" />
+                </LinearLayout>
+
                 <!-- 空状态 -->
                 <TextView
                     android:id="@+id/empty_state"
@@ -306,6 +319,75 @@
                     android:contentDescription="字数统计详情" />
             </LinearLayout>
         </LinearLayout>
+    </LinearLayout>
+
+    <!-- 终端输出区域 -->
+    <LinearLayout
+        android:id="@+id/terminal_panel"
+        android:layout_width="match_parent"
+        android:layout_height="200dp"
+        android:orientation="vertical"
+        android:background="#1E1E1E"
+        android:visibility="gone">
+
+        <!-- 终端标题栏 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="36dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="#2D2D2D"
+            android:paddingLeft="12dp"
+            android:paddingRight="12dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="终端输出"
+                android:textSize="12sp"
+                android:textColor="#CCCCCC"
+                android:textStyle="bold" />
+
+            <ImageView
+                android:id="@+id/btn_clear_terminal"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:src="@android:drawable/ic_menu_delete"
+                android:tint="#CCCCCC"
+                android:padding="4dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="清空终端" />
+
+            <ImageView
+                android:id="@+id/btn_hide_terminal"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:src="@android:drawable/ic_menu_close_clear_cancel"
+                android:tint="#CCCCCC"
+                android:padding="4dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="隐藏终端" />
+        </LinearLayout>
+
+        <!-- 终端输出内容 -->
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:fillViewport="true"
+            android:padding="8dp">
+
+            <TextView
+                android:id="@+id/terminal_output"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="等待执行..."
+                android:textSize="12sp"
+                android:textColor="#4CAF50"
+                android:fontFamily="monospace"
+                android:gravity="bottom|start" />
+        </ScrollView>
     </LinearLayout>
 
 </LinearLayout>
