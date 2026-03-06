@@ -7,16 +7,13 @@
     android:background="#1E1E1E"
     android:padding="32dp">
 
-    <!-- Logo 图标占位 -->
-    <TextView
+    <!-- Logo 图标 -->
+    <ImageView
         android:layout_width="80dp"
         android:layout_height="80dp"
-        android:text="V"
-        android:textSize="48sp"
-        android:textColor="#2196F3"
-        android:textStyle="bold"
-        android:gravity="center"
-        android:layout_marginBottom="24dp" />
+        android:src="@drawable/logo"
+        android:layout_marginBottom="24dp"
+        android:contentDescription="App Logo" />
 
     <!-- 标题 -->
     <TextView

@@ -7,15 +7,12 @@
     android:background="#1E1E1E">
 
     <!-- Loading 动画图标 -->
-    <TextView
+    <ImageView
         android:layout_width="64dp"
         android:layout_height="64dp"
-        android:text="V"
-        android:textSize="48sp"
-        android:textColor="#2196F3"
-        android:textStyle="bold"
-        android:gravity="center"
-        android:layout_marginBottom="32dp" />
+        android:src="@drawable/logo"
+        android:layout_marginBottom="32dp"
+        android:contentDescription="Loading Logo" />
 
     <!-- 加载文本 -->
     <TextView

@@ -158,7 +158,7 @@ class WorkspaceViewModel(
             } else {
                 val errorMsg = "执行失败\n错误: ${result.message}\n行号: ${result.lineNumber}"
                 terminalManager.appendTerminalOutput(errorMsg, isError = true)
-                LuaExecutionResult.Error(result.message ?: "未知错误", result.lineNumber ?: -1)
+                LuaExecutionResult.Error(result.message, result.lineNumber)
             }
         } catch (e: LuaException) {
             terminalManager.appendTerminalOutput("执行异常: ${e.message ?: "未知错误"}", isError = true)

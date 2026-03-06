@@ -2,8 +2,8 @@ package com.venside.x1n.utils
 
 import android.app.AlertDialog
 import android.content.Context
+import android.view.LayoutInflater
 import android.widget.EditText
-import android.widget.LinearLayout
 import android.widget.Toast
 import com.venside.x1n.R
 
@@ -28,31 +28,16 @@ object DialogHelper {
         defaultValue: String = "",
         onConfirm: (String) -> Unit
     ) {
-        val editText = EditText(context).apply {
-            this.hint = hint
-            setText(defaultValue)
-            setPadding(
-                ThemeConstants.PADDING_EDITTEXT,
-                ThemeConstants.PADDING_EDITTEXT_VERTICAL,
-                ThemeConstants.PADDING_EDITTEXT,
-                ThemeConstants.PADDING_EDITTEXT_VERTICAL
-            )
-        }
+        val dialogView = LayoutInflater.from(context)
+            .inflate(R.layout.dialog_input, null)
+        val editText = dialogView.findViewById<EditText>(R.id.dialog_input)
 
-        val layout = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(
-                ThemeConstants.PADDING_EDITTEXT,
-                ThemeConstants.PADDING_EDITTEXT + 10,
-                ThemeConstants.PADDING_EDITTEXT,
-                10
-            )
-            addView(editText)
-        }
+        editText.hint = hint
+        editText.setText(defaultValue)
 
-        AlertDialog.Builder(context)
+        AlertDialog.Builder(context, R.style.DialogTheme_Dark)
             .setTitle(title)
-            .setView(layout)
+            .setView(dialogView)
             .setPositiveButton("确定") { _, _ ->
                 val input = editText.text.toString().trim()
                 if (input.isNotEmpty()) {
@@ -80,30 +65,15 @@ object DialogHelper {
         onCreateFile: (String) -> Unit,
         onCreateFolder: (String) -> Unit
     ) {
-        val editText = EditText(context).apply {
-            this.hint = hint
-            setPadding(
-                ThemeConstants.PADDING_EDITTEXT,
-                ThemeConstants.PADDING_EDITTEXT_VERTICAL,
-                ThemeConstants.PADDING_EDITTEXT,
-                ThemeConstants.PADDING_EDITTEXT_VERTICAL
-            )
-        }
+        val dialogView = LayoutInflater.from(context)
+            .inflate(R.layout.dialog_input, null)
+        val editText = dialogView.findViewById<EditText>(R.id.dialog_input)
 
-        val layout = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(
-                ThemeConstants.PADDING_EDITTEXT,
-                ThemeConstants.PADDING_EDITTEXT + 10,
-                ThemeConstants.PADDING_EDITTEXT,
-                10
-            )
-            addView(editText)
-        }
+        editText.hint = hint
 
-        AlertDialog.Builder(context)
+        AlertDialog.Builder(context, R.style.DialogTheme_Dark)
             .setTitle(title)
-            .setView(layout)
+            .setView(dialogView)
             .setPositiveButton("文件") { _, _ ->
                 val input = editText.text.toString().trim()
                 if (input.isNotEmpty()) {
@@ -143,7 +113,7 @@ object DialogHelper {
         onConfirm: () -> Unit,
         onCancel: (() -> Unit)? = null
     ) {
-        AlertDialog.Builder(context)
+        AlertDialog.Builder(context, R.style.DialogTheme_Dark)
             .setTitle(title)
             .setMessage(message)
             .setPositiveButton(positiveText) { _, _ ->
@@ -168,7 +138,7 @@ object DialogHelper {
         options: Array<String>,
         onOptionSelected: (Int) -> Unit
     ) {
-        AlertDialog.Builder(context)
+        AlertDialog.Builder(context, R.style.DialogTheme_Dark)
             .setTitle(title)
             .setItems(options) { _, which ->
                 onOptionSelected(which)
@@ -189,7 +159,7 @@ object DialogHelper {
         message: String,
         onDismiss: (() -> Unit)? = null
     ) {
-        AlertDialog.Builder(context)
+        AlertDialog.Builder(context, R.style.DialogTheme_Dark)
             .setTitle(title)
             .setMessage(message)
             .setPositiveButton("确定") { _, _ ->
@@ -213,7 +183,7 @@ object DialogHelper {
         checkedItems: BooleanArray,
         onConfirm: (BooleanArray) -> Unit
     ) {
-        AlertDialog.Builder(context)
+        AlertDialog.Builder(context, R.style.DialogTheme_Dark)
             .setTitle(title)
             .setMultiChoiceItems(items, checkedItems) { _, which, isChecked ->
                 checkedItems[which] = isChecked
