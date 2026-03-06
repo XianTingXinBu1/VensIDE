@@ -20,6 +20,8 @@ class FileTreeAdapter(
     private var isSelectionMode: Boolean = false
 ) : ArrayAdapter<FileTreeItem>(context, R.layout.item_file_tree, items) {
 
+    var listView: android.widget.ListView? = null
+
     fun setSelectionMode(mode: Boolean) {
         isSelectionMode = mode
         notifyDataSetChanged()

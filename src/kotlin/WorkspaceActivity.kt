@@ -8,107 +8,76 @@ import android.view.MotionEvent
 import android.widget.PopupMenu
 import android.widget.Toast
 import com.venside.x1n.adapters.FileTreeAdapter
-import com.venside.x1n.lua.LuaEngine
-import com.venside.x1n.lua.LuaException
-import com.venside.x1n.managers.BackPressHandler
-import com.venside.x1n.managers.DialogCoordinator
-import com.venside.x1n.managers.EditorManager
-import com.venside.x1n.managers.FileManager
-import com.venside.x1n.managers.FileOperationManager
-import com.venside.x1n.managers.FileTreeCoordinator
-import com.venside.x1n.managers.PreferencesManager
-import com.venside.x1n.managers.RecentFilesBarManager
-import com.venside.x1n.managers.RecentFilesManager
-import com.venside.x1n.managers.SelectionManager
-import com.venside.x1n.managers.SidebarManager
-import com.venside.x1n.managers.SymbolBarManager
-import com.venside.x1n.managers.UIBindingManager
-import com.venside.x1n.managers.UIStateManager
-import com.venside.x1n.managers.UndoRedoManager
-import com.venside.x1n.managers.interfaces.IBackPressHandler
-import com.venside.x1n.managers.interfaces.IDialogCoordinator
-import com.venside.x1n.managers.interfaces.IFileOperationManager
-import com.venside.x1n.managers.interfaces.IFileTreeCoordinator
-import com.venside.x1n.managers.interfaces.ISelectionManager
-import com.venside.x1n.managers.interfaces.ISidebarManager
-import com.venside.x1n.managers.interfaces.IUIBindingManager
-import com.venside.x1n.managers.interfaces.IUIStateManager
+import com.venside.x1n.components.EditorComponent
+import com.venside.x1n.engine.WorkspaceEngine
+import com.venside.x1n.managers.*
+import com.venside.x1n.managers.interfaces.*
 import com.venside.x1n.models.FileTreeItem
 import com.venside.x1n.utils.DialogHelper
-import com.venside.x1n.utils.DragDropHelper
 import com.venside.x1n.utils.SlideSelectHelper
+import com.venside.x1n.viewmodel.WorkspaceViewModel
 import java.io.File
 
 class WorkspaceActivity : Activity() {
 
     private var workspacePath: String? = null
+    private lateinit var engine: WorkspaceEngine
+    private lateinit var viewModel: WorkspaceViewModel
+    private lateinit var editorComponent: EditorComponent
 
-    // 核心管理器
-    private val fileManager = FileManager()
-    private val editorManager = EditorManager()
-    private val undoRedoManager = UndoRedoManager()
-    private val recentFilesManager = RecentFilesManager()
-    private val preferencesManager: PreferencesManager by lazy { PreferencesManager(this) }
-    private val luaEngine: LuaEngine by lazy { LuaEngine() }
-
-    // 解耦后的管理器（通过接口类型注入）
     private val uiBindingManager: IUIBindingManager by lazy { UIBindingManager(this) }
-    private val selectionManager: ISelectionManager by lazy { SelectionManager(fileManager) }
     private val dialogCoordinator: IDialogCoordinator by lazy { DialogCoordinator() }
-    private val uiStateManager: IUIStateManager by lazy { 
-        UIStateManager(fileManager, editorManager, workspacePath) 
+    private val uiStateManager: UIStateManager by lazy { 
+        UIStateManager(engine.fileManager, engine.editorManager, workspacePath) 
     }
-    private val backPressHandler: IBackPressHandler by lazy { 
-        BackPressHandler(editorManager, fileManager) 
-    }
-    private val fileTreeCoordinator: IFileTreeCoordinator by lazy { 
-        FileTreeCoordinator(fileManager) 
-    }
-    private val fileOperationManager: IFileOperationManager by lazy {
-        FileOperationManager(this, editorManager, fileTreeCoordinator)
-    }
-    private val sidebarManager: ISidebarManager by lazy {
-        SidebarManager(this, preferencesManager)
-    }
-
-    // UI 管理器
+    private val sidebarManager: ISidebarManager by lazy { SidebarManager(this, engine.preferencesManager) }
     private val symbolBarManager: SymbolBarManager by lazy {
         SymbolBarManager(
             this,
-            onSymbolInsert = { symbol -> insertSymbol(symbol) },
-            shouldShow = { editorManager.isFileOpen() && uiBindingManager.getTerminalPanel()?.visibility != android.view.View.VISIBLE }
+            onSymbolInsert = { editorComponent.insertSymbol(it) },
+            shouldShow = { viewModel.isFileOpen() && !viewModel.isTerminalVisible() }
         )
     }
     private val recentFilesBarManager: RecentFilesBarManager by lazy {
-        RecentFilesBarManager(this, recentFilesManager, editorManager)
+        RecentFilesBarManager(this, engine.recentFilesManager, engine.editorManager)
     }
-
-    // 辅助类
-    private val dragDropHelper = DragDropHelper()
+    private val terminalManager = TerminalManager()
+    private lateinit var fileTreeController: FileTreeController
     private val slideSelectHelper = SlideSelectHelper()
-
-    // 适配器和数据
     private lateinit var fileTreeAdapter: FileTreeAdapter
     private var fileTree: MutableList<FileTreeItem> = mutableListOf()
-
-    // 终端历史记录
-    private val terminalHistory = mutableListOf<String>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_workspace)
 
-        workspacePath = intent.getStringExtra("workspace_path")
-        fileManager.init(workspacePath ?: "/")
+        workspacePath = intent.getStringExtra("workspace_path") ?: "/"
+        engine = WorkspaceEngine(this, workspacePath!!)
+        viewModel = WorkspaceViewModel(this, engine, terminalManager)
+        editorComponent = EditorComponent(engine, uiStateManager)
 
-        // 加载设置
-        fileManager.setSortModes(preferencesManager.getSortModes())
+        editorComponent.init(
+            editorContent = uiBindingManager.getEditorContent(),
+            lineNumbers = uiBindingManager.getLineNumbers(),
+            undoButton = uiBindingManager.getUndoButton(),
+            redoButton = uiBindingManager.getRedoButton(),
+            wordCountBar = uiBindingManager.getWordCountBar(),
+            wordCountTextView = uiBindingManager.getWordCountTextView()
+        )
+        editorComponent.onLineNumbersUpdate = {}
+        editorComponent.onWordCountUpdate = { updateWordCount() }
+
+        uiBindingManager.getTerminalPanel()?.let { terminalPanel ->
+            uiBindingManager.getTerminalOutput()?.let { terminalOutput ->
+                terminalManager.init(terminalPanel, terminalOutput)
+            }
+        }
+
+        engine.fileManager.setSortModes(viewModel.getSortModes())
         sidebarManager.bindSidebar(uiBindingManager.getSidebar())
         sidebarManager.loadState()
-
-        // 初始化
         symbolBarManager.init()
-        (selectionManager as SelectionManager).setFileTree(fileTree)
+        (engine.selectionManager as SelectionManager).setFileTree(fileTree)
 
         setupUI()
         loadCurrentDir()
@@ -122,31 +91,11 @@ class WorkspaceActivity : Activity() {
 
         uiBindingManager.bindRunButton { runLuaFile() }
 
-        uiBindingManager.bindMenuButton {
-            val menuButton = uiBindingManager.getMenuButton()
-            if (menuButton != null) {
-                val popup = PopupMenu(this, menuButton)
-                popup.menuInflater.inflate(R.menu.main_menu, popup.menu)
-                popup.setOnMenuItemClickListener { item ->
-                    when (item.itemId) {
-                        R.id.menu_save -> {
-                            saveCurrentFile()
-                            true
-                        }
-                        R.id.menu_terminal -> {
-                            toggleTerminal()
-                            true
-                        }
-                        else -> false
-                    }
-                }
-                popup.show()
-            }
-        }
+        uiBindingManager.bindMenuButton { showMenu() }
 
         uiBindingManager.bindUndoRedoButtons(
-            onUndo = { performUndo() },
-            onRedo = { performRedo() }
+            onUndo = { editorComponent.performUndo() },
+            onRedo = { editorComponent.performRedo() }
         )
 
         uiBindingManager.bindPathDisplay(
@@ -155,7 +104,7 @@ class WorkspaceActivity : Activity() {
         )
 
         uiBindingManager.bindDragDrop { fromIndex, toIndex ->
-            recentFilesManager.moveFile(fromIndex, toIndex)
+            viewModel.moveRecentFile(fromIndex, toIndex)
         }
 
         uiBindingManager.bindNewButton {
@@ -167,20 +116,19 @@ class WorkspaceActivity : Activity() {
         }
 
         uiBindingManager.bindFileTree(
-            onItemClick = { position -> handleFileTreeItemClick(position) },
-            onItemLongClick = { position -> handleFileTreeItemLongClick(position) },
-            onTouch = { event -> handleFileTreeTouch(event) }
+            onItemClick = { position -> fileTreeController.handleFileTreeItemClick(position) },
+            onItemLongClick = { position -> fileTreeController.handleFileTreeItemLongClick(position) },
+            onTouch = { event -> fileTreeController.handleFileTreeTouch(event) }
         )
 
         uiBindingManager.bindEditorListeners(
-            onEditorClick = { if (selectionManager.isSelectionMode()) exitSelectionMode() },
-            onContentChanged = { updateLineNumbers(); updateWordCount() },
-            onTextChanged = { start, before, count -> recordTextChange(start, before, count) }
+            onEditorClick = { if (engine.selectionManager.isSelectionMode()) exitSelectionMode() },
+            onContentChanged = { updateWordCount() },
+            onTextChanged = { _, _, _ -> /* 由 EditorComponent 处理 */ }
         )
 
-        // 监听编辑器焦点变化，动态显示/隐藏撤销/重做按钮
         uiBindingManager.getEditorContent()?.setOnFocusChangeListener { _, hasFocus ->
-            if (hasFocus && editorManager.isFileOpen()) {
+            if (hasFocus && viewModel.isFileOpen()) {
                 uiBindingManager.showUndoRedoBar()
             } else {
                 uiBindingManager.hideUndoRedoBar()
@@ -188,24 +136,34 @@ class WorkspaceActivity : Activity() {
         }
 
         uiBindingManager.bindWordCountButton {
-            val content = uiBindingManager.getEditorContent()?.text.toString()
-            dialogCoordinator.showWordCountDetailsDialog(this, content)
+            dialogCoordinator.showWordCountDetailsDialog(this, editorComponent.getContent())
         }
 
-        // 绑定终端按钮
         uiBindingManager.getTerminalPanel()?.findViewById<android.widget.ImageView>(R.id.btn_clear_terminal)?.setOnClickListener {
-            clearTerminal()
+            viewModel.clearTerminal()
         }
         uiBindingManager.getTerminalPanel()?.findViewById<android.widget.ImageView>(R.id.btn_hide_terminal)?.setOnClickListener {
-            hideTerminal()
+            viewModel.hideTerminal()
         }
     }
 
-    // ==================== 侧边栏操作 ====================
+    private fun showMenu() {
+        val menuButton = uiBindingManager.getMenuButton() ?: return
+        val popup = PopupMenu(this, menuButton)
+        popup.menuInflater.inflate(R.menu.main_menu, popup.menu)
+        popup.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                R.id.menu_save -> { saveCurrentFile(); true }
+                R.id.menu_terminal -> { viewModel.toggleTerminal(); true }
+                else -> false
+            }
+        }
+        popup.show()
+    }
 
     private fun toggleSidebar() {
         sidebarManager.toggleSidebar()
-        if (!sidebarManager.isSidebarVisible() && selectionManager.isSelectionMode()) {
+        if (!sidebarManager.isSidebarVisible() && engine.selectionManager.isSelectionMode()) {
             exitSelectionMode()
         }
         updateWordCount()
@@ -214,130 +172,77 @@ class WorkspaceActivity : Activity() {
     private fun handleSidebarLongPress() {
         sidebarManager.handleLongPress(
             sidebarVisible = sidebarManager.isSidebarVisible(),
-            hasRecentFiles = recentFilesManager.size() > 0,
-            hasOpenFile = editorManager.isFileOpen(),
+            hasRecentFiles = viewModel.getRecentFilesCount() > 0,
+            hasOpenFile = viewModel.isFileOpen(),
             onCloseAll = {
-                recentFilesManager.clear()
+                viewModel.clearRecentFiles()
                 updateRecentFilesBar()
-                if (editorManager.isFileOpen()) clearEditor()
+                if (viewModel.isFileOpen()) clearEditor()
             },
             onCloseCurrent = { clearEditor() },
             onShowSettings = { showExplorerSettingsDialog() }
         )
     }
 
-    // ==================== 路径显示操作 ====================
-
     private fun handlePathLongPress(): Boolean {
-        val currentFile = editorManager.getCurrentFile()
-        return if (currentFile != null) {
-            val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) 
-                as android.content.ClipboardManager
-            val clip = ClipData.newPlainText("文件路径", currentFile.absolutePath)
-            clipboard.setPrimaryClip(clip)
-            Toast.makeText(this, "已复制完整路径", Toast.LENGTH_SHORT).show()
-            true
-        } else {
-            false
-        }
-    }
-
-    private fun handlePathClick() {
-        if (selectionManager.isSelectionMode()) {
-            exitSelectionMode()
-        } else if (editorManager.getCurrentFile() == null) {
-            val intent = Intent(this, WorkspaceManagementActivity::class.java)
-            intent.putExtra("current_workspace_path", workspacePath)
-            startActivity(intent)
-        } else {
-            showFullPathDialog()
-        }
-    }
-
-    // ==================== 文件树操作 ====================
-
-    private fun loadCurrentDir() {
-        fileTree.clear()
-        fileTree.addAll(fileTreeCoordinator.loadCurrentDir())
-        fileTreeAdapter = FileTreeAdapter(
-            this, 
-            fileTree, 
-            editorManager.getCurrentFile(), 
-            selectionManager.isSelectionMode()
-        )
-        uiBindingManager.getFileTreeView()?.adapter = fileTreeAdapter
-        updatePathDisplay()
-    }
-
-    private fun handleFileTreeItemClick(position: Int) {
-        val item = fileTree[position]
-        
-        if (selectionManager.isSelectionMode()) {
-            if (item.isParentDir) {
-                exitSelectionMode()
-                onFileTreeItemClick(item)
-            } else {
-                val isSelected = selectionManager.toggleSelection(position)
-                fileTreeAdapter.notifyDataSetChanged()
-                if (!isSelected && !selectionManager.hasSelection()) {
-                    exitSelectionMode()
-                }
-            }
-        } else {
-            onFileTreeItemClick(item)
-        }
-    }
-
-    private fun handleFileTreeItemLongClick(position: Int): Boolean {
-        val item = fileTree[position]
-        
-        if (item.name == "..") {
-            fileTreeCoordinator.navigateToRoot()
-            loadCurrentDir()
-        } else if (selectionManager.isSelectionMode()) {
-            showBatchOptionsDialog()
-        } else {
-            showFileOptions(item)
-        }
+        val currentFile = viewModel.getCurrentFile() ?: return false
+        val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        val clip = ClipData.newPlainText("文件路径", currentFile.absolutePath)
+        clipboard.setPrimaryClip(clip)
+        Toast.makeText(this, "已复制完整路径", Toast.LENGTH_SHORT).show()
         return true
     }
 
-    private fun handleFileTreeTouch(event: MotionEvent): Boolean {
-        return slideSelectHelper.handleTouchEvent(
-            uiBindingManager.getFileTreeView()!!,
-            event,
-            onEnterSelection = {
-                if (!selectionManager.isSelectionMode()) {
-                    selectionManager.enterSelectionMode()
-                    fileTreeAdapter.setSelectionMode(true)
-                    Toast.makeText(this, "已进入选择模式", Toast.LENGTH_SHORT).show()
-                }
+    private fun handlePathClick() {
+        when {
+            engine.selectionManager.isSelectionMode() -> exitSelectionMode()
+            viewModel.getCurrentFile() == null -> {
+                val intent = Intent(this, WorkspaceManagementActivity::class.java)
+                intent.putExtra("current_workspace_path", workspacePath)
+                startActivity(intent)
             }
-        ) { startPos, endPos, clearPrevious, isDeselect ->
-            handleSlideSelection(startPos, endPos, clearPrevious, isDeselect)
+            else -> showFullPathDialog()
         }
     }
 
-    private fun onFileTreeItemClick(item: FileTreeItem) {
-        fileTreeCoordinator.onFileTreeItemClick(
-            item = item,
-            onOpenFile = { file -> openFileWithUnsavedCheck(file) },
-            onNavigate = { loadCurrentDir() }
+    private fun loadCurrentDir() {
+        fileTree.clear()
+        fileTree.addAll(viewModel.loadCurrentDir())
+        fileTreeAdapter = FileTreeAdapter(
+            this,
+            fileTree,
+            viewModel.getCurrentFile(),
+            engine.selectionManager.isSelectionMode()
         )
+        
+        val fileTreeView = uiBindingManager.getFileTreeView()
+        fileTreeAdapter.listView = fileTreeView
+        fileTreeView?.adapter = fileTreeAdapter
+        
+        fileTreeController = FileTreeController(
+            this,
+            engine.fileTreeCoordinator,
+            engine.selectionManager,
+            fileTreeAdapter,
+            slideSelectHelper
+        )
+        
+        fileTreeController.setCallbacks(object : FileTreeController.FileTreeCallbacks {
+            override fun onOpenFileWithUnsavedCheck(file: File) { openFileWithUnsavedCheck(file) }
+            override fun onShowFileOptions(item: FileTreeItem) { showFileOptions(item) }
+            override fun onShowBatchOptionsDialog(selectedCount: Int) { showBatchOptionsDialog() }
+            override fun onExitSelectionMode() { exitSelectionMode() }
+            override fun onRefreshFileTree() { loadCurrentDir() }
+            override fun showToast(message: String) { showToast(message) }
+        })
+        
+        updatePathDisplay()
     }
-
-    // ==================== 文件操作 ====================
 
     private fun openFileWithUnsavedCheck(file: File) {
-        // 如果点击的是当前正在编辑的文件，不做任何操作
-        if (editorManager.isCurrentFile(file)) {
-            return
-        }
-        
-        val content = uiBindingManager.getEditorContent()?.text.toString() ?: ""
-        val hasUnsavedChanges = backPressHandler.isContentModified(content)
-        
-        if (hasUnsavedChanges) {
+        if (viewModel.isCurrentFile(file)) return
+
+        if (viewModel.hasUnsavedChanges(editorComponent.getContent())) {
             DialogHelper.showConfirmDialog(
                 context = this,
                 title = "未保存的更改",
@@ -352,194 +257,97 @@ class WorkspaceActivity : Activity() {
         }
     }
 
-    private fun saveCurrentFileAndOpen(file: File) {
-        val content = uiBindingManager.getEditorContent()?.text.toString() ?: ""
-        fileOperationManager.saveFile(content, { openFile(file) }, { showError(it) })
-    }
+    private fun saveCurrentFileAndOpen(file: File) = viewModel.saveFile(editorComponent.getContent(), { openFile(file) }, ::showError)
 
     private fun openFile(file: File) {
-        fileOperationManager.openFile(file,
+        viewModel.openFile(file,
             onSuccess = { content ->
-                recentFilesManager.ensureFile(file)
+                viewModel.ensureRecentFile(file)
                 uiBindingManager.getEmptyState()?.visibility = android.view.View.GONE
                 uiBindingManager.getEditorScroll()?.visibility = android.view.View.VISIBLE
-                uiBindingManager.getEditorContent()?.setText(content)
-                previousContent = content
-                resetUndoRedoState()
+                editorComponent.setContent(content)
+                editorComponent.reset()
                 updatePathDisplay()
-                updateLineNumbers()
                 updateRecentFilesBar()
                 loadCurrentDir()
                 updateWordCount()
             },
-            onFailure = { showError(it) }
+            onFailure = ::showError
         )
     }
 
     private fun saveCurrentFile() {
-        val content = uiBindingManager.getEditorContent()?.text.toString() ?: ""
-        fileOperationManager.saveFile(content,
+        viewModel.saveFile(editorComponent.getContent(),
             onSuccess = {
                 updateFileSizeInTree()
-                Toast.makeText(this, "文件已保存", Toast.LENGTH_SHORT).show()
+                showToast("文件已保存")
             },
-            onFailure = { showError(it) }
+            onFailure = ::showError
         )
     }
 
-    private fun createFile(fileName: String) {
-        fileOperationManager.createFile(fileName, { loadCurrentDir() }, { showError(it) })
-    }
+    private fun createFile(fileName: String) = viewModel.createFile(fileName, { loadCurrentDir() }, ::showError)
 
-    private fun createFolder(folderName: String) {
-        fileOperationManager.createFolder(folderName, { loadCurrentDir() }, { showError(it) })
-    }
+    private fun createFolder(folderName: String) = viewModel.createFolder(folderName, { loadCurrentDir() }, ::showError)
 
-    private fun renameFile(file: File, newName: String) {
-        fileOperationManager.renameFile(file, newName, { loadCurrentDir() }, { showError(it) })
-    }
+    private fun renameFile(file: File, newName: String) = viewModel.renameFile(file, newName, { loadCurrentDir() }, ::showError)
 
     private fun deleteFile(file: File) {
-        fileOperationManager.deleteFile(file,
+        viewModel.deleteFile(file,
             onSuccess = {
-                recentFilesManager.removeFile(file)
+                viewModel.removeRecentFile(file)
                 updateRecentFilesBar()
-                if (editorManager.isCurrentFile(file)) clearEditor()
+                if (viewModel.isCurrentFile(file)) clearEditor()
                 loadCurrentDir()
             },
-            onFailure = { showError(it) }
+            onFailure = ::showError
         )
     }
 
-    private fun showError(message: String) {
-        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-    }
+    private fun showToast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
 
-    // ==================== Lua 执行操作 ====================
+    private fun showError(message: String) = Toast.makeText(this, "错误: $message", Toast.LENGTH_SHORT).show()
 
     private fun runLuaFile() {
-        val currentFile = editorManager.getCurrentFile()
-        
-        if (currentFile == null) {
-            Toast.makeText(this, "请先打开一个 Lua 文件", Toast.LENGTH_SHORT).show()
-            return
-        }
-        
-        if (!currentFile.name.endsWith(".lua", ignoreCase = true)) {
-            Toast.makeText(this, "当前文件不是 Lua 文件", Toast.LENGTH_SHORT).show()
-            return
-        }
-        
-        // 先保存文件
-        val content = uiBindingManager.getEditorContent()?.text.toString() ?: ""
-        val hasUnsavedChanges = backPressHandler.isContentModified(content)
-        
-        if (hasUnsavedChanges) {
-            DialogHelper.showConfirmDialog(
-                context = this,
-                title = "未保存的更改",
-                message = "执行前需要保存文件，是否保存？",
-                positiveText = "保存并执行",
-                negativeText = "取消",
-                onConfirm = {
-                    saveCurrentFile()
-                    executeLuaFile(currentFile)
-                }
-            )
-        } else {
-            executeLuaFile(currentFile)
-        }
-    }
+        val currentFile = viewModel.getCurrentFile()
 
-    private fun executeLuaFile(file: File) {
-    // 显示终端
-    showTerminal()
-    // 添加分隔线，区分不同的执行记录
-    if (terminalHistory.isNotEmpty()) {
-        appendTerminalOutput("══════════════════════════════════", isError = false)
-    }
-    appendTerminalOutput("正在执行: ${file.name}")
-
-    try {
-        val result = luaEngine.executeFile(file)
-
-        if (result.isSuccess) {
-            // 先显示print输出（如果有）
-            if (result.output.isNotEmpty()) {
-                appendTerminalOutput("输出:", isError = false)
-                // 按行显示print输出
-                result.output.lines().forEach { line ->
-                    if (line.isNotBlank()) {
-                        appendTerminalOutput(line, isError = false)
+        when {
+            currentFile == null -> showToast("请先打开一个 Lua 文件")
+            !viewModel.canExecuteLua(currentFile) -> showToast("当前文件不是 Lua 文件")
+            viewModel.hasUnsavedChanges(editorComponent.getContent()) -> {
+                DialogHelper.showConfirmDialog(
+                    context = this,
+                    title = "未保存的更改",
+                    message = "执行前需要保存文件，是否保存？",
+                    positiveText = "保存并执行",
+                    negativeText = "取消",
+                    onConfirm = {
+                        saveCurrentFile()
+                        viewModel.executeLuaFile(currentFile)
                     }
-                }
+                )
             }
-
-            // 再显示返回值（如果有）
-            if (result.returnValue.isNotEmpty()) {
-                appendTerminalOutput("返回值: ${result.returnValue}", isError = false)
-            }
-
-            appendTerminalOutput("执行成功", isError = false)
-        } else {
-            val errorMsg = "执行失败\n错误: ${result.message}\n行号: ${result.lineNumber}"
-            appendTerminalOutput(errorMsg, isError = true)
-        }
-    } catch (e: LuaException) {
-        appendTerminalOutput("执行异常: ${e.message ?: "未知错误"}", isError = true)
-    } catch (e: Exception) {
-        appendTerminalOutput("执行异常: ${e.message ?: "未知错误"}", isError = true)
-    }
-}
-
-    private fun showLuaResultDialog(title: String, message: String) {
-        DialogHelper.showMessageDialog(
-            context = this,
-            title = title,
-            message = message
-        )
-    }
-
-    // ==================== 选择模式操作 ====================
-
-    private fun handleSlideSelection(startPos: Int, endPos: Int, clearPrevious: Boolean, isDeselect: Boolean) {
-        selectionManager.handleSlideSelection(startPos, endPos, clearPrevious, isDeselect)
-        fileTreeAdapter.notifyDataSetChanged()
-        
-        if (!selectionManager.hasSelection()) {
-            exitSelectionMode()
+            else -> viewModel.executeLuaFile(currentFile)
         }
     }
 
-    private fun exitSelectionMode() {
-        selectionManager.exitSelectionMode()
-        slideSelectHelper.exitSelectionMode()
-        fileTreeAdapter.setSelectionMode(false)
-        fileTreeAdapter.clearSelection()
-        Toast.makeText(this, "已退出批量选择模式", Toast.LENGTH_SHORT).show()
-    }
+    private fun exitSelectionMode() = fileTreeController.exitSelectionMode()
 
     private fun showBatchOptionsDialog() {
         dialogCoordinator.showBatchOptionsDialog(
             context = this,
-            selectedCount = selectionManager.getSelectedItems().size,
-            onSelectAll = {
-                selectionManager.selectAll()
-                fileTreeAdapter.notifyDataSetChanged()
-            },
-            onClearSelection = {
-                selectionManager.clearSelection()
-                fileTreeAdapter.notifyDataSetChanged()
-            },
+            selectedCount = fileTreeController.getSelectedItems().size,
+            onSelectAll = { fileTreeController.selectAll() },
+            onClearSelection = { fileTreeController.clearSelection() },
             onBatchDelete = { performBatchDelete() },
             onExitSelectionMode = { exitSelectionMode() }
         )
     }
 
     private fun performBatchDelete() {
-        val selectedItems = selectionManager.getSelectedItems()
+        val selectedItems = fileTreeController.getSelectedItems()
         if (selectedItems.isEmpty()) {
-            Toast.makeText(this, "请先选择要删除的文件", Toast.LENGTH_SHORT).show()
+            showToast("请先选择要删除的文件")
             return
         }
 
@@ -548,7 +356,7 @@ class WorkspaceActivity : Activity() {
             title = "批量删除",
             message = "确定要删除选中的 ${selectedItems.size} 个项目吗？",
             onConfirm = {
-                fileOperationManager.batchDelete(selectedItems.map { it.file }) { _, _ ->
+                viewModel.batchDelete(selectedItems.map { it.file }) { _, _ ->
                     exitSelectionMode()
                     loadCurrentDir()
                 }
@@ -556,19 +364,17 @@ class WorkspaceActivity : Activity() {
         )
     }
 
-    // ==================== 对话框操作 ====================
-
     private fun showFileOptions(item: FileTreeItem) {
         dialogCoordinator.showFileOptionsDialog(
             context = this,
             item = item,
             onOpen = { if (!item.isDirectory) openFileWithUnsavedCheck(item.file) },
-            onRename = { dialogItem -> showRenameDialog(dialogItem) },
-            onDelete = { dialogItem -> 
+            onRename = { showRenameDialog(it) },
+            onDelete = { 
                 dialogCoordinator.showDeleteDialog(
                     context = this,
-                    item = dialogItem,
-                    onDelete = { file -> deleteFile(file) }
+                    item = it,
+                    onDelete = ::deleteFile
                 )
             }
         )
@@ -583,8 +389,8 @@ class WorkspaceActivity : Activity() {
     }
 
     private fun showFullPathDialog() {
-        val fullPath = editorManager.getCurrentFile()?.absolutePath 
-            ?: fileTreeCoordinator.getRootDir()?.absolutePath 
+        val fullPath = viewModel.getCurrentFile()?.absolutePath
+            ?: viewModel.getRootDir()?.absolutePath
             ?: "/workspace"
         dialogCoordinator.showFullPathDialog(this, fullPath)
     }
@@ -592,42 +398,26 @@ class WorkspaceActivity : Activity() {
     private fun showExplorerSettingsDialog() {
         dialogCoordinator.showExplorerSettingsDialog(
             context = this,
-            currentSortModes = fileManager.getSortModes(),
+            currentSortModes = viewModel.getSortModes(),
             onApply = { modes ->
-                fileManager.setSortModes(modes)
-                preferencesManager.saveSortModes(modes)
+                viewModel.setSortModes(modes)
+                viewModel.saveSortModes(modes)
                 val modeNames = (dialogCoordinator as DialogCoordinator).getSortModeNames(modes)
-                Toast.makeText(this, "已按 $modeNames 排序", Toast.LENGTH_SHORT).show()
+                showToast("已按 $modeNames 排序")
                 loadCurrentDir()
             }
         )
     }
 
-    // ==================== UI 更新操作 ====================
+    private fun updatePathDisplay() = uiStateManager.updatePathDisplay(
+        uiBindingManager.getPathTextView(),
+        uiBindingManager.getSidebarPathTextView()
+    )
 
-    private fun updatePathDisplay() {
-        uiStateManager.updatePathDisplay(
-            uiBindingManager.getPathTextView(),
-            uiBindingManager.getSidebarPathTextView()
-        )
-    }
-
-    private fun updateLineNumbers() {
-        uiStateManager.updateLineNumbers(
-            uiBindingManager.getEditorContent(),
-            uiBindingManager.getLineNumbers()
-        )
-    }
-
-    private fun updateWordCount() {
-        uiStateManager.updateWordCount(
-            editorContent = uiBindingManager.getEditorContent(),
-            wordCountBar = uiBindingManager.getWordCountBar(),
-            wordCountTextView = uiBindingManager.getWordCountTextView(),
-            sidebarVisible = sidebarManager.isSidebarVisible(),
-            isFileOpen = editorManager.isFileOpen()
-        )
-    }
+    private fun updateWordCount() = editorComponent.updateWordCountDisplay(
+        sidebarVisible = sidebarManager.isSidebarVisible(),
+        isFileOpen = viewModel.isFileOpen()
+    )
 
     private fun updateRecentFilesBar() {
         val container = uiBindingManager.getRecentFilesContainer() ?: return
@@ -636,8 +426,8 @@ class WorkspaceActivity : Activity() {
             container = container,
             onFileClick = { file -> openFileWithUnsavedCheck(file) },
             onDeleteClick = { file, index ->
-                val isCurrentFile = editorManager.isCurrentFile(file)
-                recentFilesManager.removeFileAt(index)
+                val isCurrentFile = viewModel.isCurrentFile(file)
+                engine.recentFilesManager.removeFileAt(index)
                 updateRecentFilesBar()
                 if (isCurrentFile) clearEditor()
             }
@@ -645,116 +435,15 @@ class WorkspaceActivity : Activity() {
     }
 
     private fun updateFileSizeInTree() {
-        val currentFile = editorManager.getCurrentFile() ?: return
+        val currentFile = viewModel.getCurrentFile() ?: return
 
         for (item in fileTree) {
             if (!item.isDirectory && item.filePath == currentFile.absolutePath) {
-                val updatedItem = FileTreeItem.fromFile(currentFile)
-                fileTree[fileTree.indexOf(item)] = updatedItem
+                fileTree[fileTree.indexOf(item)] = FileTreeItem.fromFile(currentFile)
                 break
             }
         }
         fileTreeAdapter.notifyDataSetChanged()
-    }
-
-    private fun insertSymbol(symbol: String) {
-        uiStateManager.insertSymbol(
-            editorContent = uiBindingManager.getEditorContent(),
-            symbol = symbol,
-            onInserted = { updateLineNumbers() }
-        )
-    }
-
-    // ==================== 撤销/重做操作 ====================
-
-    private var previousContent: String = ""
-    private var isUndoRedoAction: Boolean = false
-
-    private fun recordTextChange(start: Int, before: Int, count: Int) {
-        if (isUndoRedoAction) return
-        
-        val editorContent = uiBindingManager.getEditorContent() ?: return
-        val currentContent = editorContent.text.toString()
-        
-        // 边界检查：确保 substring 不会越界
-        val safeStart = start.coerceIn(0, previousContent.length)
-        val safeEnd = (start + before).coerceIn(0, previousContent.length)
-        
-        if (before > 0 && count == 0 && safeEnd > safeStart) {
-            // 删除操作
-            val deletedText = previousContent.substring(safeStart, safeEnd)
-            undoRedoManager.recordDelete(safeStart, deletedText)
-        } else if (count > 0 && before == 0) {
-            // 插入操作
-            val insertedText = currentContent.substring(start, (start + count).coerceAtMost(currentContent.length))
-            undoRedoManager.recordInsert(start, insertedText)
-        } else if (before > 0 && count > 0 && safeEnd > safeStart) {
-            // 替换操作（记录为删除+插入）
-            val deletedText = previousContent.substring(safeStart, safeEnd)
-            val insertedText = currentContent.substring(start, (start + count).coerceAtMost(currentContent.length))
-            undoRedoManager.recordDelete(safeStart, deletedText)
-            undoRedoManager.recordInsert(start, insertedText)
-        }
-        
-        previousContent = currentContent
-        updateUndoRedoButtons()
-    }
-
-    private fun performUndo() {
-        val editorContent = uiBindingManager.getEditorContent() ?: return
-        val currentContent = editorContent.text.toString()
-        
-        val newContent = undoRedoManager.undo(currentContent)
-        if (newContent != null) {
-            isUndoRedoAction = true
-            editorContent.setText(newContent)
-            previousContent = newContent
-            isUndoRedoAction = false
-            updateLineNumbers()
-            updateWordCount()
-        }
-        updateUndoRedoButtons()
-    }
-
-    private fun performRedo() {
-        val editorContent = uiBindingManager.getEditorContent() ?: return
-        val currentContent = editorContent.text.toString()
-        
-        val newContent = undoRedoManager.redo(currentContent)
-        if (newContent != null) {
-            isUndoRedoAction = true
-            editorContent.setText(newContent)
-            previousContent = newContent
-            isUndoRedoAction = false
-            updateLineNumbers()
-            updateWordCount()
-        }
-        updateUndoRedoButtons()
-    }
-
-    private fun updateUndoRedoButtons() {
-        val undoBtn = uiBindingManager.getUndoButton()
-        val redoBtn = uiBindingManager.getRedoButton()
-        
-        undoBtn?.let { btn ->
-            val canUndo = undoRedoManager.canUndo()
-            btn.isEnabled = canUndo
-            btn.imageAlpha = if (canUndo) 255 else 128
-            btn.setColorFilter(if (canUndo) 0xFFCCCCCC.toInt() else 0xFF666666.toInt())
-        }
-        
-        redoBtn?.let { btn ->
-            val canRedo = undoRedoManager.canRedo()
-            btn.isEnabled = canRedo
-            btn.imageAlpha = if (canRedo) 255 else 128
-            btn.setColorFilter(if (canRedo) 0xFFCCCCCC.toInt() else 0xFF666666.toInt())
-        }
-    }
-
-    private fun resetUndoRedoState() {
-        undoRedoManager.reset()
-        previousContent = ""
-        updateUndoRedoButtons()
     }
 
     private fun clearEditor() {
@@ -765,76 +454,15 @@ class WorkspaceActivity : Activity() {
             lineNumbers = uiBindingManager.getLineNumbers(),
             wordCountBar = uiBindingManager.getWordCountBar()
         )
-        resetUndoRedoState()
+        editorComponent.reset()
         updatePathDisplay()
         loadCurrentDir()
     }
 
-    // ==================== 终端操作 ====================
-
-    private fun toggleTerminal() {
-        val terminalPanel = uiBindingManager.getTerminalPanel()
-        if (terminalPanel != null) {
-            if (terminalPanel.visibility == android.view.View.GONE) {
-                showTerminal()
-            } else {
-                hideTerminal()
-            }
-        }
-    }
-
-    private fun showTerminal() {
-        uiBindingManager.getTerminalPanel()?.visibility = android.view.View.VISIBLE
-    }
-
-    private fun hideTerminal() {
-        uiBindingManager.getTerminalPanel()?.visibility = android.view.View.GONE
-    }
-
-    private fun clearTerminal(clearHistory: Boolean = true) {
-    if (clearHistory) {
-        terminalHistory.clear()
-    }
-    if (terminalHistory.isEmpty()) {
-        uiBindingManager.getTerminalOutput()?.text = "等待执行..."
-    } else {
-        uiBindingManager.getTerminalOutput()?.text = terminalHistory.joinToString("\n")
-    }
-}
-
-    private fun appendTerminalOutput(text: String, isError: Boolean = false) {
-    val terminalOutput = uiBindingManager.getTerminalOutput()
-    if (terminalOutput != null) {
-        val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
-        val newText = "[$timestamp] $text"
-
-        // 添加到历史记录
-        terminalHistory.add(newText)
-
-        // 更新显示
-        terminalOutput.text = terminalHistory.joinToString("\n")
-        terminalOutput.setTextColor(
-            if (isError) 0xFFFF5252.toInt() else 0xFF4CAF50.toInt()
-        )
-
-        // 自动滚动到底部
-        (terminalOutput.parent as? android.widget.ScrollView)?.post {
-            (terminalOutput.parent as? android.widget.ScrollView)?.fullScroll(android.widget.ScrollView.FOCUS_DOWN)
-        }
-    }
-    }
-
-    // ==================== 返回键处理 ====================
-
-    override fun onBackPressed() {
-        handleBackPress()
-    }
+    override fun onBackPressed() = handleBackPress()
 
     private fun handleBackPress() {
-        val content = uiBindingManager.getEditorContent()?.text.toString() ?: ""
-        val hasUnsavedChanges = backPressHandler.isContentModified(content)
-
-        if (hasUnsavedChanges) {
+        if (viewModel.hasUnsavedChanges(editorComponent.getContent())) {
             DialogHelper.showConfirmDialog(
                 context = this,
                 title = "未保存的更改",

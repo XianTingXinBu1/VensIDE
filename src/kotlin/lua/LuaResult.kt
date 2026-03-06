@@ -12,7 +12,7 @@ enum class LuaStatus(val code: Int) {
 
     companion object {
         fun fromCode(code: Int): LuaStatus {
-            return entries.find { it.code == code } ?: RUNTIME_ERROR
+            return values().find { it.code == code } ?: RUNTIME_ERROR
         }
     }
 }
