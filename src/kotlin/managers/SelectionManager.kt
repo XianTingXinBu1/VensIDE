@@ -52,11 +52,6 @@ class SelectionManager(
     }
 
     override fun handleSlideSelection(startPos: Int, endPos: Int, clearPrevious: Boolean, isDeselect: Boolean) {
-        // 如果是新选择操作，清除之前的选择
-        if (clearPrevious) {
-            fileTree.forEach { it.isSelected = false }
-        }
-
         // 确定起始和结束位置（处理方向）
         val actualStart = minOf(startPos, endPos)
         val actualEnd = maxOf(startPos, endPos)
@@ -72,7 +67,12 @@ class SelectionManager(
                 }
             }
         } else {
-            // 正常选择：选中区间内的所有项
+            // 如果是新选择操作，先清除之前的选择
+            if (clearPrevious) {
+                fileTree.forEach { it.isSelected = false }
+            }
+
+            // 累加选择：选中区间内的所有项（保留之前的选择）
             for (i in actualStart..actualEnd) {
                 if (i in fileTree.indices) {
                     val item = fileTree[i]

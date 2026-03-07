@@ -45,6 +45,12 @@ override fun bindMenuButton(onClick: () -> Unit) {
     }
 }
 
+override fun bindSaveButton(onClick: () -> Unit) {
+    activity.findViewById<ImageView>(R.id.btn_save)?.setOnClickListener {
+        onClick()
+    }
+}
+
     override fun bindUndoRedoButtons(onUndo: () -> Unit, onRedo: () -> Unit) {
         activity.findViewById<ImageView>(R.id.btn_undo)?.setOnClickListener {
             onUndo()
@@ -111,9 +117,14 @@ override fun bindMenuButton(onClick: () -> Unit) {
         return null
     }
 
-    override fun bindNewButton(onClick: () -> Unit) {
+    override fun bindNewButton(onClick: () -> Unit, onLongPress: () -> Unit) {
         activity.findViewById<ImageView>(R.id.btn_new)?.setOnClickListener {
             onClick()
+        }
+
+        activity.findViewById<ImageView>(R.id.btn_new)?.setOnLongClickListener {
+            onLongPress()
+            true
         }
     }
 
@@ -138,7 +149,7 @@ override fun bindMenuButton(onClick: () -> Unit) {
     }
 
     override fun bindEditorListeners(
-        onEditorClick: () -> Unit, 
+        onEditorClick: () -> Unit,
         onContentChanged: () -> Unit,
         onTextChanged: (Int, Int, Int) -> Unit
     ) {
@@ -156,15 +167,21 @@ override fun bindMenuButton(onClick: () -> Unit) {
 
         activity.findViewById<EditText>(R.id.editor_content)?.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            
+
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                 onTextChanged(start, before, count)
             }
-            
+
             override fun afterTextChanged(s: Editable?) {
                 onContentChanged()
             }
         })
+    }
+
+    override fun bindEditorTouch(onTouch: (event: android.view.MotionEvent) -> Boolean) {
+        activity.findViewById<EditText>(R.id.editor_content)?.setOnTouchListener { _, event ->
+            onTouch(event)
+        }
     }
 
     override fun bindWordCountButton(onClick: () -> Unit) {

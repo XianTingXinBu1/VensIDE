@@ -151,30 +151,48 @@
             android:background="#1E1E1E">
 
             <!-- 最近文件顶栏 -->
-            <HorizontalScrollView
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="32dp"
-                android:background="#2D2D2D"
-                android:scrollbars="none">
+                android:orientation="horizontal"
+                android:background="#2D2D2D">
 
-                <LinearLayout
-                    android:id="@+id/recent_files_container"
-                    android:layout_width="wrap_content"
+                <HorizontalScrollView
+                    android:layout_width="0dp"
                     android:layout_height="match_parent"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:paddingLeft="8dp"
-                    android:paddingRight="8dp">
+                    android:layout_weight="1"
+                    android:scrollbars="none">
 
-                    <TextView
+                    <LinearLayout
+                        android:id="@+id/recent_files_container"
                         android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="最近打开: "
-                        android:textSize="11sp"
-                        android:textColor="#999999"
-                        android:layout_marginRight="8dp" />
-                </LinearLayout>
-            </HorizontalScrollView>
+                        android:layout_height="match_parent"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:paddingLeft="8dp"
+                        android:paddingRight="8dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="最近打开: "
+                            android:textSize="11sp"
+                            android:textColor="#999999"
+                            android:layout_marginRight="8dp" />
+                    </LinearLayout>
+                </HorizontalScrollView>
+
+                <!-- 保存按钮 -->
+                <ImageView
+                    android:id="@+id/btn_save"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:src="@android:drawable/ic_menu_save"
+                    android:tint="#4CAF50"
+                    android:padding="6dp"
+                    android:background="?android:attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="保存" />
+            </LinearLayout>
 
             <!-- 编辑器内容区域 -->
             <LinearLayout

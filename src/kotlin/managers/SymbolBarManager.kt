@@ -36,11 +36,13 @@ class SymbolBarManager(
 
     // 常用符号列表
     private val commonSymbols = listOf(
-        "{", "}", "(", ")", "[", "]", ";", ":",
-        "=", "+", "-", "*", "/", "%",
-        "<", ">", "!", "&", "|", "^", "~",
-        "\"", "'", "`", "\\", "@", "#", "$",
-        ",", ".", "?", "_", "→"
+        "Tab", "→", "←", "↑", "↓",
+        "{", "}", "(", ")", "[", "]",
+        ";", ":", "=", "+", "-", "*",
+        "/", "%", "<", ">", "!", "&",
+        "|", "^", "~", "\"", "'",
+        "`", "\\", "@", "#", "$",
+        ",", ".", "?", "_"
     )
 
     /**
@@ -86,7 +88,19 @@ class SymbolBarManager(
 
         commonSymbols.forEach { symbol ->
             val button = Button(activity).apply {
-                text = symbol
+                // Tab 按钮特殊处理
+                val displayText = when (symbol) {
+                    "Tab" -> "Tab"
+                    else -> symbol
+                }
+                
+                // Tab 按钮插入实际的 Tab 字符
+                val insertText = when (symbol) {
+                    "Tab" -> "\t"
+                    else -> symbol
+                }
+
+                text = displayText
                 textSize = buttonTextSizeSp
                 minWidth = buttonSizePx
                 minHeight = buttonSizePx
@@ -102,7 +116,7 @@ class SymbolBarManager(
                 }
 
                 setOnClickListener {
-                    onSymbolInsert(symbol)
+                    onSymbolInsert(insertText)
                 }
             }
 

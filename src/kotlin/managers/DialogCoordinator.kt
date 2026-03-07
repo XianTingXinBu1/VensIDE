@@ -191,6 +191,13 @@ class DialogCoordinator : IDialogCoordinator {
         )
     }
 
+    override fun showProjectTemplateDialog(
+        context: Context,
+        onTemplateSelected: (String) -> Unit
+    ) {
+        DialogHelper.showProjectTemplateDialog(context, onTemplateSelected)
+    }
+
     /**
      * 获取排序模式显示名称
      */

@@ -194,4 +194,45 @@ object DialogHelper {
             .setNegativeButton("取消", null)
             .show()
     }
+
+    /**
+     * 显示项目模板对话框
+     * @param context 上下文
+     * @param onTemplateSelected 模板选中回调，参数为模板 ID
+     */
+    fun showProjectTemplateDialog(
+        context: Context,
+        onTemplateSelected: (String) -> Unit
+    ) {
+        val dialogView = LayoutInflater.from(context)
+            .inflate(R.layout.dialog_project_template, null)
+        
+        val templateContainer = dialogView.findViewById<android.widget.LinearLayout>(R.id.template_container)
+        
+        val templates = com.venside.x1n.models.ProjectTemplate.getAllTemplates()
+        
+        templates.forEach { template ->
+            val templateView = LayoutInflater.from(context)
+                .inflate(R.layout.item_project_template, templateContainer, false)
+            
+            val iconView = templateView.findViewById<android.widget.ImageView>(R.id.iv_template_icon)
+            val nameView = templateView.findViewById<android.widget.TextView>(R.id.tv_template_name)
+            val descView = templateView.findViewById<android.widget.TextView>(R.id.tv_template_description)
+            
+            iconView.setImageResource(template.iconResId)
+            nameView.text = template.name
+            descView.text = template.description
+            
+            templateView.setOnClickListener {
+                onTemplateSelected(template.id)
+            }
+            
+            templateContainer.addView(templateView)
+        }
+        
+        AlertDialog.Builder(context, R.style.DialogTheme_Dark)
+            .setView(dialogView)
+            .setNegativeButton("取消", null)
+            .show()
+    }
 }

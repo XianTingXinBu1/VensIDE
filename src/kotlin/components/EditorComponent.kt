@@ -24,10 +24,16 @@ class EditorComponent(
     private val engine: WorkspaceEngine,
     private val uiStateManager: UIStateManager
 ) {
-    
+
     private val lineNumberHelper = LineNumberHelper()
     private var previousContent: String = ""
     private var isUndoRedoAction: Boolean = false
+
+    // 缩放相关变量
+    private var scaleGestureDetector: android.view.ScaleGestureDetector? = null
+    private var currentTextSize = 14f
+    private var minTextSize = 8f
+    private var maxTextSize = 32f
     
     // UI 控件引用
     private var editorContent: EditText? = null
@@ -58,8 +64,9 @@ class EditorComponent(
         this.redoButton = redoButton
         this.wordCountBar = wordCountBar
         this.wordCountTextView = wordCountTextView
-        
+
         setupTextWatcher()
+        setupScaleGestureDetector()
         updateUndoRedoButtons()
     }
     
@@ -238,7 +245,54 @@ class EditorComponent(
         wordCountBar?.visibility = LinearLayout.GONE
         reset()
     }
-    
+
+    /**
+     * 设置缩放手势检测器
+     */
+    private fun setupScaleGestureDetector() {
+        scaleGestureDetector = android.view.ScaleGestureDetector(
+            engine.appContext,
+            object : android.view.ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                override fun onScale(detector: android.view.ScaleGestureDetector): Boolean {
+                    val scaleFactor = detector.scaleFactor
+                    val newTextSize = currentTextSize * scaleFactor
+
+                    // 限制字体大小范围
+                    if (newTextSize >= minTextSize && newTextSize <= maxTextSize) {
+                        currentTextSize = newTextSize
+                        updateTextSize()
+                    }
+
+                    return true
+                }
+            }
+        )
+    }
+
+    /**
+     * 处理触摸事件
+     */
+    fun onTouchEvent(event: android.view.MotionEvent): Boolean {
+        scaleGestureDetector?.onTouchEvent(event)
+        return false // 让编辑器继续处理触摸事件
+    }
+
+    /**
+     * 更新编辑器和行号的字体大小
+     */
+    private fun updateTextSize() {
+        editorContent?.textSize = currentTextSize
+        lineNumbers?.textSize = currentTextSize
+    }
+
+    /**
+     * 重置字体大小
+     */
+    fun resetTextSize() {
+        currentTextSize = 14f
+        updateTextSize()
+    }
+
     /**
      * 更新字数显示
      */

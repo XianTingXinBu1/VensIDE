@@ -20,6 +20,9 @@ class WorkspaceEngine(
     val workspacePath: String
 ) {
 
+    /** 获取 Context */
+    val appContext: Context get() = context
+
     // ==================== 核心业务 Manager ====================
 
     /** 文件管理器 */

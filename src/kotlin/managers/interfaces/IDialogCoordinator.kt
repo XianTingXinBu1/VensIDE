@@ -105,4 +105,14 @@ interface IDialogCoordinator {
      * @param content 编辑器内容
      */
     fun showWordCountDetailsDialog(context: Context, content: String)
+    
+    /**
+     * 显示项目模板对话框
+     * @param context 上下文
+     * @param onTemplateSelected 模板选中回调，参数为模板 ID
+     */
+    fun showProjectTemplateDialog(
+        context: Context,
+        onTemplateSelected: (String) -> Unit
+    )
 }

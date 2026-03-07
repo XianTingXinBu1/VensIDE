@@ -27,7 +27,6 @@ class SlideSelectHelper {
     private var startPosition = -1
     
     // 选择状态
-    private var isInSelectionMode = false
     private var firstSelectedPosition = -1
     private var lastSelectedPosition = -1
     
@@ -46,6 +45,7 @@ class SlideSelectHelper {
      * @param listView 列表视图
      * @param event 触摸事件
      * @param onEnterSelection 进入选择模式回调
+     * @param onExitSelection 退出选择模式回调
      * @param onSelectionChanged 选择变化回调，参数为（起始位置，结束位置，是否清除之前选择，是否是取消操作）
      * @return 是否已处理该事件（消费事件）
      */
@@ -53,6 +53,7 @@ class SlideSelectHelper {
         listView: ListView,
         event: MotionEvent,
         onEnterSelection: () -> Unit,
+        onExitSelection: () -> Unit,
         onSelectionChanged: (startPos: Int, endPos: Int, clearPrevious: Boolean, isDeselect: Boolean) -> Unit
     ): Boolean {
         when (event.action) {
@@ -63,50 +64,47 @@ class SlideSelectHelper {
                 startPosition = listView.pointToPosition(event.x.toInt(), event.y.toInt())
                 isTracking = startPosition != AbsListView.INVALID_POSITION
                 isSlideSelecting = false
-                isNewSelection = true
-                
-                // 如果已经在选择模式中，记录起始位置用于区间选择
-                if (isInSelectionMode && isTracking) {
+
+                // 记录起点，选择逻辑由外部控制
+                if (isTracking) {
                     firstSelectedPosition = startPosition
                     lastSelectedPosition = startPosition
+                    isNewSelection = true
                 }
                 return false // 不消费DOWN事件，让ListView正常处理点击
             }
 
             MotionEvent.ACTION_MOVE -> {
                 if (!isTracking || startPosition == -1) return false
-                
+
                 val deltaX = event.x - startX
                 val deltaY = event.y - startY
                 val absDeltaX = kotlin.math.abs(deltaX)
                 val absDeltaY = kotlin.math.abs(deltaY)
-                
+
                 // 检测是否为水平滑动（水平移动距离大于垂直移动距离的2倍）
-                if (!isInSelectionMode && absDeltaX > absDeltaY * 2 && absDeltaX >= TRIGGER_THRESHOLD) {
-                    // 水平滑动超过阈值，进入选择模式
-                    isInSelectionMode = true
+                if (absDeltaX > absDeltaY * 2 && absDeltaX >= TRIGGER_THRESHOLD) {
+                    // 水平滑动超过阈值，通知外部进入选择模式
                     isSlideSelecting = true
-                    firstSelectedPosition = startPosition
-                    lastSelectedPosition = startPosition
                     onEnterSelection()
                     // 新的选择操作，清除之前的选择
                     onSelectionChanged(firstSelectedPosition, lastSelectedPosition, true, false)
                     isNewSelection = false
                     return true
                 }
-                
-                // 在选择模式中，处理垂直滑动进行区间选择
-                if (isInSelectionMode && absDeltaY > 10) {
+
+                // 处理垂直滑动进行区间选择
+                if (absDeltaY > 10) {
                     isSlideSelecting = true
                     val currentPosition = listView.pointToPosition(event.x.toInt(), event.y.toInt())
                     if (currentPosition != AbsListView.INVALID_POSITION && currentPosition != lastSelectedPosition) {
                         lastSelectedPosition = currentPosition
-                        
+
                         // 检查是否再次滑动相同区域（取消选择）
                         val currentStart = minOf(firstSelectedPosition, lastSelectedPosition)
                         val currentEnd = maxOf(firstSelectedPosition, lastSelectedPosition)
                         val isDeselect = (currentStart == lastSelectionStart && currentEnd == lastSelectionEnd)
-                        
+
                         if (isDeselect) {
                             // 取消选择
                             onSelectionChanged(firstSelectedPosition, lastSelectedPosition, true, true)
@@ -141,11 +139,6 @@ class SlideSelectHelper {
     }
 
     /**
-     * 是否处于选择模式
-     */
-    fun isInSelection(): Boolean = isInSelectionMode
-
-    /**
      * 获取首次选中的位置
      */
     fun getFirstSelectedPosition(): Int = firstSelectedPosition
@@ -156,10 +149,9 @@ class SlideSelectHelper {
     fun getLastSelectedPosition(): Int = lastSelectedPosition
 
     /**
-     * 退出选择模式
+     * 重置选择相关的状态（不包括模式状态，模式状态由外部管理）
      */
-    fun exitSelectionMode() {
-        isInSelectionMode = false
+    fun resetSelectionState() {
         firstSelectedPosition = -1
         lastSelectedPosition = -1
         isNewSelection = true
@@ -177,6 +169,6 @@ class SlideSelectHelper {
         isNewSelection = true
         lastSelectionStart = -1
         lastSelectionEnd = -1
-        exitSelectionMode()
+        resetSelectionState()
     }
 }

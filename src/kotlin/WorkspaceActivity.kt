@@ -35,9 +35,12 @@ class WorkspaceActivity : Activity() {
         SymbolBarManager(
             this,
             onSymbolInsert = { editorComponent.insertSymbol(it) },
-            shouldShow = { viewModel.isFileOpen() && !viewModel.isTerminalVisible() }
+            shouldShow = { isEditorFocused && viewModel.isFileOpen() && !viewModel.isTerminalVisible() && !isDialogShowing }
         )
     }
+
+    private var isDialogShowing = false
+    private var isEditorFocused = false
     private val recentFilesBarManager: RecentFilesBarManager by lazy {
         RecentFilesBarManager(this, engine.recentFilesManager, engine.editorManager)
     }
@@ -93,6 +96,8 @@ class WorkspaceActivity : Activity() {
 
         uiBindingManager.bindMenuButton { showMenu() }
 
+        uiBindingManager.bindSaveButton { saveCurrentFile() }
+
         uiBindingManager.bindUndoRedoButtons(
             onUndo = { editorComponent.performUndo() },
             onRedo = { editorComponent.performRedo() }
@@ -107,13 +112,32 @@ class WorkspaceActivity : Activity() {
             viewModel.moveRecentFile(fromIndex, toIndex)
         }
 
-        uiBindingManager.bindNewButton {
-            dialogCoordinator.showNewOptionsDialog(
-                context = this,
-                onCreateFile = { fileName -> createFile(fileName) },
-                onCreateFolder = { folderName -> createFolder(folderName) }
-            )
-        }
+        uiBindingManager.bindNewButton(
+            onClick = {
+                isDialogShowing = true
+                dialogCoordinator.showNewOptionsDialog(
+                    context = this,
+                    onCreateFile = { fileName ->
+                        createFile(fileName)
+                        isDialogShowing = false
+                    },
+                    onCreateFolder = { folderName ->
+                        createFolder(folderName)
+                        isDialogShowing = false
+                    }
+                )
+            },
+            onLongPress = {
+                isDialogShowing = true
+                dialogCoordinator.showProjectTemplateDialog(
+                    context = this,
+                    onTemplateSelected = { templateId ->
+                        isDialogShowing = false
+                        showProjectTemplateInputDialog(templateId)
+                    }
+                )
+            }
+        )
 
         uiBindingManager.bindFileTree(
             onItemClick = { position -> fileTreeController.handleFileTreeItemClick(position) },
@@ -127,7 +151,13 @@ class WorkspaceActivity : Activity() {
             onTextChanged = { _, _, _ -> /* 由 EditorComponent 处理 */ }
         )
 
+        uiBindingManager.bindEditorTouch { event ->
+            editorComponent.onTouchEvent(event)
+            false // 让编辑器继续处理触摸事件
+        }
+
         uiBindingManager.getEditorContent()?.setOnFocusChangeListener { _, hasFocus ->
+            isEditorFocused = hasFocus
             if (hasFocus && viewModel.isFileOpen()) {
                 uiBindingManager.showUndoRedoBar()
             } else {
@@ -136,7 +166,9 @@ class WorkspaceActivity : Activity() {
         }
 
         uiBindingManager.bindWordCountButton {
+            isDialogShowing = true
             dialogCoordinator.showWordCountDetailsDialog(this, editorComponent.getContent())
+            isDialogShowing = false
         }
 
         uiBindingManager.getTerminalPanel()?.findViewById<android.widget.ImageView>(R.id.btn_clear_terminal)?.setOnClickListener {
@@ -233,7 +265,7 @@ class WorkspaceActivity : Activity() {
             override fun onShowBatchOptionsDialog(selectedCount: Int) { showBatchOptionsDialog() }
             override fun onExitSelectionMode() { exitSelectionMode() }
             override fun onRefreshFileTree() { loadCurrentDir() }
-            override fun showToast(message: String) { showToast(message) }
+            override fun showToast(message: String) { Toast.makeText(this@WorkspaceActivity, message, Toast.LENGTH_SHORT).show() }
         })
         
         updatePathDisplay()
@@ -243,14 +275,21 @@ class WorkspaceActivity : Activity() {
         if (viewModel.isCurrentFile(file)) return
 
         if (viewModel.hasUnsavedChanges(editorComponent.getContent())) {
+            isDialogShowing = true
             DialogHelper.showConfirmDialog(
                 context = this,
                 title = "未保存的更改",
                 message = "当前文件有未保存的更改，是否保存？",
                 positiveText = "保存并打开",
                 negativeText = "不保存打开",
-                onConfirm = { saveCurrentFileAndOpen(file) },
-                onCancel = { openFile(file) }
+                onConfirm = {
+                    isDialogShowing = false
+                    saveCurrentFileAndOpen(file)
+                },
+                onCancel = {
+                    isDialogShowing = false
+                    openFile(file)
+                }
             )
         } else {
             openFile(file)
@@ -315,6 +354,7 @@ class WorkspaceActivity : Activity() {
             currentFile == null -> showToast("请先打开一个 Lua 文件")
             !viewModel.canExecuteLua(currentFile) -> showToast("当前文件不是 Lua 文件")
             viewModel.hasUnsavedChanges(editorComponent.getContent()) -> {
+                isDialogShowing = true
                 DialogHelper.showConfirmDialog(
                     context = this,
                     title = "未保存的更改",
@@ -322,8 +362,12 @@ class WorkspaceActivity : Activity() {
                     positiveText = "保存并执行",
                     negativeText = "取消",
                     onConfirm = {
+                        isDialogShowing = false
                         saveCurrentFile()
                         viewModel.executeLuaFile(currentFile)
+                    },
+                    onCancel = {
+                        isDialogShowing = false
                     }
                 )
             }
@@ -334,13 +378,26 @@ class WorkspaceActivity : Activity() {
     private fun exitSelectionMode() = fileTreeController.exitSelectionMode()
 
     private fun showBatchOptionsDialog() {
+        isDialogShowing = true
         dialogCoordinator.showBatchOptionsDialog(
             context = this,
             selectedCount = fileTreeController.getSelectedItems().size,
-            onSelectAll = { fileTreeController.selectAll() },
-            onClearSelection = { fileTreeController.clearSelection() },
-            onBatchDelete = { performBatchDelete() },
-            onExitSelectionMode = { exitSelectionMode() }
+            onSelectAll = {
+                isDialogShowing = false
+                fileTreeController.selectAll()
+            },
+            onClearSelection = {
+                isDialogShowing = false
+                fileTreeController.clearSelection()
+            },
+            onBatchDelete = {
+                isDialogShowing = false
+                performBatchDelete()
+            },
+            onExitSelectionMode = {
+                isDialogShowing = false
+                exitSelectionMode()
+            }
         )
     }
 
@@ -351,55 +408,79 @@ class WorkspaceActivity : Activity() {
             return
         }
 
+        isDialogShowing = true
         DialogHelper.showConfirmDialog(
             context = this,
             title = "批量删除",
             message = "确定要删除选中的 ${selectedItems.size} 个项目吗？",
             onConfirm = {
+                isDialogShowing = false
                 viewModel.batchDelete(selectedItems.map { it.file }) { _, _ ->
                     exitSelectionMode()
                     loadCurrentDir()
                 }
+            },
+            onCancel = {
+                isDialogShowing = false
             }
         )
     }
 
     private fun showFileOptions(item: FileTreeItem) {
+        isDialogShowing = true
         dialogCoordinator.showFileOptionsDialog(
             context = this,
             item = item,
-            onOpen = { if (!item.isDirectory) openFileWithUnsavedCheck(item.file) },
-            onRename = { showRenameDialog(it) },
-            onDelete = { 
+            onOpen = {
+                isDialogShowing = false
+                if (!item.isDirectory) openFileWithUnsavedCheck(item.file)
+            },
+            onRename = {
+                isDialogShowing = false
+                showRenameDialog(it)
+            },
+            onDelete = {
+                isDialogShowing = false
                 dialogCoordinator.showDeleteDialog(
                     context = this,
                     item = it,
-                    onDelete = ::deleteFile
+                    onDelete = {
+                        isDialogShowing = false
+                        deleteFile(it)
+                    }
                 )
             }
         )
     }
 
     private fun showRenameDialog(item: FileTreeItem) {
+        isDialogShowing = true
         dialogCoordinator.showRenameDialog(
             context = this,
             item = item,
-            onRename = { file, newName -> renameFile(file, newName) }
+            onRename = { file, newName ->
+                isDialogShowing = false
+                renameFile(file, newName)
+            }
         )
     }
 
     private fun showFullPathDialog() {
+        isDialogShowing = true
         val fullPath = viewModel.getCurrentFile()?.absolutePath
             ?: viewModel.getRootDir()?.absolutePath
             ?: "/workspace"
         dialogCoordinator.showFullPathDialog(this, fullPath)
+        isDialogShowing = false
     }
 
     private fun showExplorerSettingsDialog() {
+        isDialogShowing = true
         dialogCoordinator.showExplorerSettingsDialog(
             context = this,
             currentSortModes = viewModel.getSortModes(),
             onApply = { modes ->
+                isDialogShowing = false
                 viewModel.setSortModes(modes)
                 viewModel.saveSortModes(modes)
                 val modeNames = (dialogCoordinator as DialogCoordinator).getSortModeNames(modes)
@@ -407,6 +488,62 @@ class WorkspaceActivity : Activity() {
                 loadCurrentDir()
             }
         )
+    }
+
+    private fun showProjectTemplateInputDialog(templateId: String) {
+        val template = com.venside.x1n.models.ProjectTemplate.getAllTemplates()
+            .find { it.id == templateId }
+        
+        if (template == null) {
+            showToast("未找到模板")
+            return
+        }
+        
+        isDialogShowing = true
+        DialogHelper.showInputDialog(
+            context = this,
+            title = "创建${template.name}",
+            hint = "输入项目名称",
+            defaultValue = template.name
+        ) { projectName ->
+            isDialogShowing = false
+            createProjectFromTemplate(template, projectName)
+        }
+    }
+
+    private fun createProjectFromTemplate(
+        template: com.venside.x1n.models.ProjectTemplate,
+        projectName: String
+    ) {
+        // 获取当前目录
+        val currentDir = engine.fileManager.getCurrentDir()
+        val projectDir = File(currentDir, projectName)
+        
+        // 检查是否已存在同名文件夹
+        if (projectDir.exists()) {
+            showToast("文件夹已存在")
+            return
+        }
+        
+        // 创建项目文件夹
+        if (!projectDir.mkdirs()) {
+            showToast("创建文件夹失败")
+            return
+        }
+        
+        // 创建模板中的所有文件
+        template.files.forEach { templateFile ->
+            val file = File(projectDir, templateFile.path)
+            
+            // 创建父目录（如果需要）
+            file.parentFile?.mkdirs()
+            
+            // 写入文件内容
+            file.writeText(templateFile.content)
+        }
+        
+        showToast("项目创建成功")
+        loadCurrentDir()
     }
 
     private fun updatePathDisplay() = uiStateManager.updatePathDisplay(
@@ -463,6 +600,7 @@ class WorkspaceActivity : Activity() {
 
     private fun handleBackPress() {
         if (viewModel.hasUnsavedChanges(editorComponent.getContent())) {
+            isDialogShowing = true
             DialogHelper.showConfirmDialog(
                 context = this,
                 title = "未保存的更改",
@@ -470,17 +608,28 @@ class WorkspaceActivity : Activity() {
                 positiveText = "保存并返回",
                 negativeText = "不保存返回",
                 onConfirm = {
+                    isDialogShowing = false
                     saveCurrentFile()
                     finish()
                 },
-                onCancel = { finish() }
+                onCancel = {
+                    isDialogShowing = false
+                    finish()
+                }
             )
         } else {
+            isDialogShowing = true
             DialogHelper.showConfirmDialog(
                 context = this,
                 title = "返回主页",
                 message = "确定要返回主页吗？",
-                onConfirm = { finish() }
+                onConfirm = {
+                    isDialogShowing = false
+                    finish()
+                },
+                onCancel = {
+                    isDialogShowing = false
+                }
             )
         }
     }

@@ -109,7 +109,7 @@ class FileTreeController(
      */
     fun handleFileTreeTouch(event: MotionEvent): Boolean {
         val listView = fileTreeAdapter.listView ?: return false
-        
+
         return slideSelectHelper.handleTouchEvent(
             listView,
             event,
@@ -119,6 +119,10 @@ class FileTreeController(
                     fileTreeAdapter.setSelectionMode(true)
                     callbacks?.showToast("已进入选择模式")
                 }
+            },
+            onExitSelection = {
+                // 通知外部退出选择模式
+                callbacks?.onExitSelectionMode()
             }
         ) { startPos, endPos, clearPrevious, isDeselect ->
             handleSlideSelection(startPos, endPos, clearPrevious, isDeselect)
@@ -153,7 +157,7 @@ class FileTreeController(
      */
     fun exitSelectionMode() {
         selectionManager.exitSelectionMode()
-        slideSelectHelper.exitSelectionMode()
+        slideSelectHelper.resetSelectionState()
         fileTreeAdapter.setSelectionMode(false)
         fileTreeAdapter.clearSelection()
         callbacks?.showToast("已退出批量选择模式")

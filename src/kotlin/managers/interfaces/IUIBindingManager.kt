@@ -30,7 +30,13 @@ interface IUIBindingManager {
      * @param onClick 点击回调
      */
     fun bindMenuButton(onClick: () -> Unit)
-    
+
+    /**
+     * 绑定保存按钮
+     * @param onClick 点击回调
+     */
+    fun bindSaveButton(onClick: () -> Unit)
+
     /**
      * 绑定撤销/重做按钮
      * @param onUndo 撤销回调
@@ -54,8 +60,9 @@ interface IUIBindingManager {
     /**
      * 绑定新建按钮
      * @param onClick 点击回调
+     * @param onLongPress 长按回调
      */
-    fun bindNewButton(onClick: () -> Unit)
+    fun bindNewButton(onClick: () -> Unit, onLongPress: () -> Unit)
     
     /**
      * 绑定文件树列表
@@ -76,10 +83,16 @@ interface IUIBindingManager {
      * @param onTextChanged 文本变化回调 (start, before, count)
      */
     fun bindEditorListeners(
-        onEditorClick: () -> Unit, 
+        onEditorClick: () -> Unit,
         onContentChanged: () -> Unit,
         onTextChanged: (start: Int, before: Int, count: Int) -> Unit = { _, _, _ -> }
     )
+
+    /**
+     * 绑定编辑器触摸事件
+     * @param onTouch 触摸事件回调
+     */
+    fun bindEditorTouch(onTouch: (event: android.view.MotionEvent) -> Boolean)
     
     /**
      * 绑定字数统计按钮

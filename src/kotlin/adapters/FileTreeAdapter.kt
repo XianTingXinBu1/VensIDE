@@ -16,11 +16,11 @@ import java.io.File
 class FileTreeAdapter(
     context: Activity,
     private val items: List<FileTreeItem>,
-    private val currentFile: File? = null,
-    private var isSelectionMode: Boolean = false
+    private val currentFile: File? = null
 ) : ArrayAdapter<FileTreeItem>(context, R.layout.item_file_tree, items) {
 
     var listView: android.widget.ListView? = null
+    var isSelectionMode: Boolean = false
 
     fun setSelectionMode(mode: Boolean) {
         isSelectionMode = mode
